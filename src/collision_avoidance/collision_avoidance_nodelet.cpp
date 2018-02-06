@@ -7,6 +7,8 @@
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Matrix3x3.h>
 
+PLUGINLIB_EXPORT_CLASS(collision_avoidance::CANodelet, nodelet::Nodelet)
+
 namespace collision_avoidance
 {
 
@@ -160,7 +162,4 @@ namespace collision_avoidance
         current_x_vel_ = msg->twist.twist.linear.y; // This should be y?
         current_y_vel_ = msg->twist.twist.linear.x; // This should be x?
     }
-
-
-    PLUGINLIB_DECLARE_CLASS(collision_avoidance, CA, collision_avoidance::CANodelet, nodelet::Nodelet)
 }
