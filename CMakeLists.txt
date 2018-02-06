@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(orm)
+project(collision_avoidance)
 
 ## Add support for C++11, supported in ROS Kinetic and newer
 # add_definitions(-std=c++11)
@@ -9,14 +9,13 @@ project(orm)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
   controller_msgs
-  joy_rumble
   nav_msgs
   nodelet
   pcl_conversions
   pcl_ros
   roscpp
   rospy
-  safe_flight_msgs
+  sensor_readings
   std_msgs
   tf2
   tf2_ros
@@ -114,7 +113,7 @@ find_package(catkin REQUIRED COMPONENTS
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES collision_avoidance
-  CATKIN_DEPENDS controller_msgs joy_rumble nodelet pcl_conversions pcl_ros roscpp rospy safe_flight_msgs std_msgs
+  CATKIN_DEPENDS controller_msgs nodelet pcl_conversions pcl_ros roscpp rospy sensor_readings std_msgs
 #  DEPENDS system_lib
 )
 

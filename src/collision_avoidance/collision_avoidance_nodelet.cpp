@@ -25,7 +25,6 @@ namespace collision_avoidance
         odometry_sub_ = nh.subscribe<nav_msgs::Odometry>("/mavros/local_position/odom", 1, &CANodelet::odometryCallback, this);
 
         collision_free_control_pub_ = nh.advertise<controller_msgs::Controller>("collision_free_control", 1);
-        rumble_pub_ = nh.advertise<joy_rumble::Rumble_msg>("rumble_message", 1);
 
         orm_ = new ORM(radius_, security_distance_, epsilon_, min_distance_hold_, min_change_in_direction_, max_change_in_direction_, min_opposite_direction_, max_opposite_direction_);
     }
@@ -48,7 +47,7 @@ namespace collision_avoidance
         nh.param<double>("min_distance_hold", min_distance_hold_, 0.3);
     }
 
-    void CANodelet::sensorReadingsCallback(const safe_flight_msgs::SensorReadings::ConstPtr & msg)
+    void CANodelet::sensorReadingsCallback(const sensor_readings::SensorReadings::ConstPtr & msg)
     {
         std::vector<Point> new_obstacles;
         new_obstacles.reserve(msg->x.size());
@@ -59,11 +58,6 @@ namespace collision_avoidance
         }
 
         obstacles_ = new_obstacles;
-    }
-
-    bool CANodelet::hapticFeedback(double want_direction, double going_direction)
-    {
-        // TODO
     }
 
     void CANodelet::collisionAvoidance(const controller_msgs::Controller::ConstPtr & msg, const double magnitude)
@@ -127,26 +121,6 @@ namespace collision_avoidance
                 continue;
             }
 
-            /*
-            // Decrease the distance with 5 cm?!
-            double dobs = Point::getDistance(obstacles_[i]);
-
-            dobs -= radius_;
-
-            double deff = ab_ * (T_ * T_) * (std::sqrt(1.0d + ((2.0d * dobs) / (ab_ * (T_ * T_)))) - 1.0d);
-
-            deff += radius_;
-
-            deff = std::min(Point::getDistance(obstacles_[i]), deff);
-            deff = std::max(deff, radius_ + 0.01d);
-
-            Point p;
-            p.x_ = deff * std::cos(Point::getDirection(obstacles_[i]));
-            p.y_ = deff * std::sin(Point::getDirection(obstacles_[i]));
-
-            obstacles->push_back(p);
-            */
-
             Point p;
             p.x_ = obstacles_[i].x_ - current_x_vel_;
             p.y_ = obstacles_[i].y_ - current_y_vel_;
@@ -180,38 +154,6 @@ namespace collision_avoidance
         control->twist_stamped.twist.linear.x = updated_goal.x_;
         control->twist_stamped.twist.linear.y = updated_goal.y_;
     }
-
-    /*
-    void CANodelet::currentPoseCallback(const geometry_msgs::PoseStamped::ConstPtr & msg)
-    {
-        current_pose_ = *msg;
-    }
-
-    double CANodelet::getCurrentYaw()
-    {
-        double roll, pitch, yaw;
-
-        geometry_msgs::Quaternion cur_or = current_pose_.pose.orientation;
-
-        tf2::Quaternion q(cur_or.x, cur_or.y, cur_or.z, cur_or.w);
-        tf2::Matrix3x3 m(q);
-        m.getEulerYPR(yaw, pitch, roll);
-
-        return yaw;
-    }
-
-    void CANodelet::currentVelocityCallback(const geometry_msgs::TwistStamped::ConstPtr & msg)
-    {
-        double current_yaw = getCurrentYaw();
-
-        // TODO: Is this correct?!
-        // Source: https://www.siggraph.org/education/materials/HyperGraph/modeling/mod_tran/2drota.htm
-        current_x_vel_ = (msg->twist.linear.x * std::cos(current_yaw)) + (msg->twist.linear.y * std::sin(current_yaw));
-        current_y_vel_ = (msg->twist.linear.y * std::cos(current_yaw)) - (msg->twist.linear.x * std::sin(current_yaw));
-
-        ROS_FATAL_STREAM_THROTTLE(1, current_yaw << ": [" << msg->twist.linear.x << ", " << msg->twist.linear.y << "] -> [" << current_x_vel_ << ", " << current_y_vel_ << "]");
-    }
-    */
 
     void CANodelet::odometryCallback(const nav_msgs::Odometry::ConstPtr & msg)
     {

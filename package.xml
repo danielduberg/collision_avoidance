@@ -45,26 +45,24 @@
   <!--   <test_depend>gtest</test_depend> -->
   <buildtool_depend>catkin</buildtool_depend>
   <build_depend>controller_msgs</build_depend>
-  <build_depend>joy_rumble</build_depend>
   <build_depend>nav_msgs</build_depend>
   <build_depend>nodelet</build_depend>
   <build_depend>pcl_conversions</build_depend>
   <build_depend>pcl_ros</build_depend>
   <build_depend>roscpp</build_depend>
   <build_depend>rospy</build_depend>
-  <build_depend>safe_flight_msgs</build_depend>
+  <build_depend>sensor_readings</build_depend>
   <build_depend>std_msgs</build_depend>
   <build_depend>tf2</build_depend>
   <build_depend>tf2_ros</build_depend>
   <run_depend>controller_msgs</run_depend>
-  <run_depend>joy_rumble</run_depend>
   <run_depend>nav_msgs</run_depend>
   <run_depend>nodelet</run_depend>
   <run_depend>pcl_conversions</run_depend>
   <run_depend>pcl_ros</run_depend>
   <run_depend>roscpp</run_depend>
   <run_depend>rospy</run_depend>
-  <run_depend>safe_flight_msgs</run_depend>
+  <run_depend>sensor_readings</run_depend>
   <run_depend>std_msgs</run_depend>
   <run_depend>tf2</run_depend>
   <run_depend>tf2_ros</run_depend>

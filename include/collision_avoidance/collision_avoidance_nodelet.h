@@ -12,10 +12,8 @@
 
 #include <nav_msgs/Odometry.h>
 
-#include <safe_flight_msgs/SensorReadings.h>
+#include <sensor_readings/SensorReadings.h>
 #include <controller_msgs/Controller.h>
-
-#include <joy_rumble/Rumble_msg.h>
 
 namespace collision_avoidance
 {
@@ -70,9 +68,7 @@ namespace collision_avoidance
 
         void init_param(ros::NodeHandle & nh);
 
-        void sensorReadingsCallback(const safe_flight_msgs::SensorReadings::ConstPtr & msg);
-
-        bool hapticFeedback(double want_direction, double going_direction);
+        void sensorReadingsCallback(const sensor_readings::SensorReadings::ConstPtr & msg);
 
         void collisionAvoidance(const controller_msgs::Controller::ConstPtr & msg, const double magnitude);
 
@@ -83,12 +79,6 @@ namespace collision_avoidance
         void getEgeDynamicSpace(std::vector<Point> * obstacles);
 
         void adjustVelocity(controller_msgs::Controller * control, const double magnitude);
-
-        //void currentPoseCallback(const geometry_msgs::PoseStamped::ConstPtr & msg);
-
-        //double getCurrentYaw();
-
-        //void currentVelocityCallback(const geometry_msgs::TwistStamped::ConstPtr & msg);
 
         void odometryCallback(const nav_msgs::Odometry::ConstPtr & msg);
     };
