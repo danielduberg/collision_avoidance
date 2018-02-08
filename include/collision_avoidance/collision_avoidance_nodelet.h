@@ -55,8 +55,6 @@ namespace collision_avoidance
         ros::Subscriber sensor_readings_sub_;
         ros::Subscriber collision_avoidance_joy_sub_;
         ros::Subscriber collision_avoidance_setpoint_sub_;
-        //ros::Subscriber current_pose_sub_;
-        //ros::Subscriber current_velocity_sub_;
         ros::Subscriber odometry_sub_;
 
         // Publishers
