@@ -19,7 +19,7 @@ namespace collision_avoidance
 
         init_param(nh_priv);
 
-        sensor_readings_sub_ = nh.subscribe("/sensor_readings", 1, &CANodelet::sensorReadingsCallback, this);
+        //sensor_readings_sub_ = nh.subscribe("/sensor_readings", 1, &CANodelet::sensorReadingsCallback, this);
         collision_avoidance_setpoint_sub_ = nh.subscribe("/controller/setpoint", 1, &CANodelet::collisionAvoidanceSetpointCallback, this);
         collision_avoidance_joy_sub_ = nh.subscribe("/controller/joy", 1, &CANodelet::collisionAvoidanceJoyCallback, this);
         odometry_sub_ = nh.subscribe<nav_msgs::Odometry>("/mavros/local_position/odom", 1, &CANodelet::odometryCallback, this);
@@ -47,6 +47,84 @@ namespace collision_avoidance
         nh.param<double>("min_distance_hold", min_distance_hold_, 0.3);
     }
 
+    void CANodelet::pointCloudCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr & msg)
+    {
+      // Transform msg to correct frame
+
+      // Check if we already have a message from this sensor (by checking how_many and
+      // at which angle the data starts/stops)
+      size_t i = 0;
+      while (i < obstacle_cloud_.size())
+      {
+        if (obstacle_cloud_[i].how_many == msg->size())
+        {
+          // Check if starting/ending angle is sort of the same
+          if (true)
+          {
+            // Overwrite the existing data with the new data
+            return;
+          }
+        }
+        i += obstacle_cloud_[i].how_many;
+      }
+
+      // This is (hopefully) the first time we got data from this sensor
+      obstacle_cloud_.reserve(obstacle_cloud_.size() + msg->size());
+
+      for (size_t i = 0; i < msg->size(); ++i)
+      {
+        PointXYZTF point;
+        point.stamp = pcl_conversions::fromPCL(msg->header.stamp);
+        point.how_many = msg->size();
+        point.x = (*msg)[i].x;
+        point.y = (*msg)[i].y;
+        point.z = (*msg)[i].z;
+
+        obstacle_cloud_.push_back(point);
+      }
+    }
+
+//    void CANodelet::laserScanCallback(const sensor_msgs::LaserScan::ConstPtr & msg)
+//    {
+//      ros::Time now = ros::Time::now();
+
+//      // Remove old sensor data
+//      for (size_t i = 0; i < new_obstacles_.size(); ++i)
+//      {
+//        if ((now - obstacles_acquired_[i]).toSec() > 1)
+//        {
+//          // We discard all data that is older than one second
+//          new_obstacles_[i] = -1;
+//        }
+//      }
+
+
+//      // Change size of vectors is required
+//      int num_elements_for_360 = (2 * M_PI) / msg->angle_increment;
+
+//      if (num_elements_for_360 > new_obstacles_.size())
+//      {
+//        // We have to increase the number of elements in obstacles_
+//        std::vector<double> new_obstacles(num_elements_for_360, -1);
+//        // Set time to zero so it is as old as it can be
+//        std::vector<ros::Time> new_obstacles_acquired_(num_elements_for_360, ros::Time(0));
+
+//        // Input the values from obstacles_
+//        for (size_t i = 0; i < new_obstacles_.size(); ++i)
+//        {
+//          int new_i = num_elements_for_360 * (i / new_obstacles_.size());
+//          new_obstacles[new_i] = new_obstacles_[i];
+//          new_obstacles_acquired_[new_i] = obstacles_acquired_[i];
+//        }
+//      }
+
+
+//      // Input values from new sensor reading
+//      // Transform to robot frame
+
+//    }
+
+    /*
     void CANodelet::sensorReadingsCallback(const sensor_readings::SensorReadings::ConstPtr & msg)
     {
         std::vector<Point> new_obstacles;
@@ -59,6 +137,7 @@ namespace collision_avoidance
 
         obstacles_ = new_obstacles;
     }
+    */
 
     void CANodelet::collisionAvoidance(const controller_msgs::Controller::ConstPtr & msg, const double magnitude)
     {
@@ -112,23 +191,23 @@ namespace collision_avoidance
 
     void CANodelet::getEgeDynamicSpace(std::vector<Point> * obstacles)
     {
-        for (size_t i = 0; i < obstacles_.size(); ++i)
-        {
-            if (obstacles_[i].x_ == 0 && obstacles_[i].y_ == 0)
-            {
-                // No reading here
-                obstacles->push_back(obstacles_[i]);
-                continue;
-            }
+//        for (size_t i = 0; i < obstacles_.size(); ++i)
+//        {
+//            if (obstacles_[i].x_ == 0 && obstacles_[i].y_ == 0)
+//            {
+//                // No reading here
+//                obstacles->push_back(obstacles_[i]);
+//                continue;
+//            }
 
-            Point p;
-            p.x_ = obstacles_[i].x_ - current_x_vel_;
-            p.y_ = obstacles_[i].y_ - current_y_vel_;
+//            Point p;
+//            p.x_ = obstacles_[i].x_ - current_x_vel_;
+//            p.y_ = obstacles_[i].y_ - current_y_vel_;
 
-            // TODO: Check that it is above 0
+//            // TODO: Check that it is above 0
 
-            obstacles->push_back(p);
-        }
+//            obstacles->push_back(p);
+//        }
     }
 
     void CANodelet::adjustVelocity(controller_msgs::Controller * control, const double magnitude)
@@ -136,12 +215,12 @@ namespace collision_avoidance
         double closest_obstacle_distance = 1000;
         for (size_t i = 0; i < obstacles_.size(); ++i)
         {
-            double distance = Point::getDistance(obstacles_[i]);
+//            double distance = Point::getDistance(obstacles_[i]);
 
-            if (distance != 0 && distance < closest_obstacle_distance)
-            {
-                closest_obstacle_distance = distance;
-            }
+//            if (distance != 0 && distance < closest_obstacle_distance)
+//            {
+//                closest_obstacle_distance = distance;
+//            }
         }
 
         Point goal(control->twist_stamped.twist.linear.x, control->twist_stamped.twist.linear.y);

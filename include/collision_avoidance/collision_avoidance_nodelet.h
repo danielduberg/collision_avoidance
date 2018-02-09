@@ -1,5 +1,12 @@
 #pragma once
 
+#define PCL_NO_PRECOMPILE
+#include <pcl_conversions/pcl_conversions.h>
+#include <pcl_ros/transforms.h>
+#include <pcl/filters/filter.h>
+#include <pcl_ros/point_cloud.h>
+#include <pcl/point_types.h>
+
 #include <nodelet/nodelet.h>
 
 #include <ros/ros.h>
@@ -12,11 +19,20 @@
 
 #include <nav_msgs/Odometry.h>
 
-#include <sensor_readings/SensorReadings.h>
+//#include <sensor_readings/SensorReadings.h>
+#include <sensor_msgs/LaserScan.h>
 #include <controller_msgs/Controller.h>
 
 namespace collision_avoidance
 {
+  // http://pointclouds.org/documentation/tutorials/adding_custom_ptype.php#how-to-add-a-new-pointt-type
+  struct PointXYZTF
+  {
+    PCL_ADD_POINT4D;
+    ros::Time stamp;
+    int how_many;
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+  } EIGEN_ALIGN16;
     
     class CANodelet : public nodelet::Nodelet
     {
@@ -24,6 +40,10 @@ namespace collision_avoidance
     private:
         // Obstacles
         std::vector<Point> obstacles_;
+        std::vector<double> new_obstacles_;
+        std::vector<ros::Time> obstacles_acquired_;
+
+        pcl::PointCloud<PointXYZTF> obstacle_cloud_;
 
         // Current pose
         geometry_msgs::PoseStamped current_pose_;
@@ -66,7 +86,11 @@ namespace collision_avoidance
 
         void init_param(ros::NodeHandle & nh);
 
-        void sensorReadingsCallback(const sensor_readings::SensorReadings::ConstPtr & msg);
+        void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr & msg);
+
+//        void laserScanCallback(const sensor_msgs::LaserScan::ConstPtr & msg);
+
+        //void sensorReadingsCallback(const sensor_readings::SensorReadings::ConstPtr & msg);
 
         void collisionAvoidance(const controller_msgs::Controller::ConstPtr & msg, const double magnitude);
 
