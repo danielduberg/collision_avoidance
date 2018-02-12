@@ -7,6 +7,8 @@
 #include <pcl_ros/point_cloud.h>
 #include <pcl/point_types.h>
 
+#include <tf2_ros/transform_listener.h>
+
 #include <nodelet/nodelet.h>
 
 #include <ros/ros.h>
@@ -21,6 +23,7 @@
 
 //#include <sensor_readings/SensorReadings.h>
 #include <sensor_msgs/LaserScan.h>
+#include <sensor_msgs/PointCloud2.h>
 #include <controller_msgs/Controller.h>
 
 namespace collision_avoidance
@@ -81,16 +84,24 @@ namespace collision_avoidance
         ros::Publisher collision_free_control_pub_;
         ros::Publisher rumble_pub_;
 
+        // Transform
+        tf2_ros::Buffer tf_buffer_;
+        tf2_ros::TransformListener * tf_listener_;
+
     private:
         virtual void onInit();
 
         void init_param(ros::NodeHandle & nh);
 
-        void pointCloudCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr & msg);
+        void transformPointcloud(const std::string & target_frame, const std::string & source_frame, const sensor_msgs::PointCloud2::ConstPtr & in_cloud, sensor_msgs::PointCloud2 * out_cloud);
 
-//        void laserScanCallback(const sensor_msgs::LaserScan::ConstPtr & msg);
+        void rosToPcl(const sensor_msgs::PointCloud2 & in_cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr out_cloud);
 
-        //void sensorReadingsCallback(const sensor_readings::SensorReadings::ConstPtr & msg);
+        size_t getStartingIndex(const pcl::PointCloud<PointXYZTF> & cloud, const pcl::PointCloud<pcl::PointXYZ>::Ptr new_data);
+
+        void updateObstacleInformation(pcl::PointCloud<PointXYZTF> * obstacles, const pcl::PointCloud<pcl::PointXYZ>::Ptr new_data, size_t starting_index);
+
+        void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr & msg);
 
         void collisionAvoidance(const controller_msgs::Controller::ConstPtr & msg, const double magnitude);
 

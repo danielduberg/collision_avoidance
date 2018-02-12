@@ -7,6 +7,10 @@
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Matrix3x3.h>
 
+#include <geometry_msgs/TransformStamped.h>
+
+#include <pcl/PCLPointCloud2.h>
+
 PLUGINLIB_EXPORT_CLASS(collision_avoidance::CANodelet, nodelet::Nodelet)
 
 namespace collision_avoidance
@@ -45,99 +49,124 @@ namespace collision_avoidance
         nh.param<double>("T", T_, 0.3);
 
         nh.param<double>("min_distance_hold", min_distance_hold_, 0.3);
+
+        tf_listener_ = new tf2_ros::TransformListener(tf_buffer_);
     }
 
-    void CANodelet::pointCloudCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr & msg)
+    void CANodelet::transformPointcloud(const std::string & target_frame, const std::string & source_frame, const sensor_msgs::PointCloud2::ConstPtr & in_cloud, sensor_msgs::PointCloud2 *out_cloud)
+    {
+      geometry_msgs::TransformStamped transform;
+      try
+      {
+        transform = tf_buffer_.lookupTransform(target_frame, source_frame, ros::Time(0));
+      }
+      catch (tf2::TransformException & ex)
+      {
+        NODELET_WARN("%s", ex.what());
+        return;
+      }
+
+      tf2::doTransform(*in_cloud, *out_cloud, transform);
+
+      out_cloud->header.frame_id = target_frame;
+      out_cloud->header.stamp = in_cloud->header.stamp;
+    }
+
+    void CANodelet::rosToPcl(const sensor_msgs::PointCloud2 & in_cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr out_cloud)
+    {
+      pcl::PCLPointCloud2 temp_cloud;
+      pcl_conversions::toPCL(in_cloud, temp_cloud);
+      pcl::fromPCLPointCloud2(temp_cloud, *out_cloud);
+    }
+
+    // Returns cloud.size() if this is the first time we get data from this sensor...
+    size_t CANodelet::getStartingIndex(const pcl::PointCloud<PointXYZTF> & cloud, const pcl::PointCloud<pcl::PointXYZ>::Ptr new_data)
+    {
+      size_t i = 0;
+      while (i < cloud.size())
+      {
+        if (cloud[i].how_many == new_data->width)
+        {
+          for (size_t j = 0; j < cloud[i].how_many; ++j)
+          {
+            if (!pcl_isfinite(cloud[i + j].x) || !pcl_isfinite(cloud[i + j].y) || !pcl_isfinite(cloud[i + j].z))
+            {
+              // Not a valid point
+              continue;
+            }
+            if (!pcl_isfinite((*new_data)[i + j].x) || !pcl_isfinite((*new_data)[i + j].y) || !pcl_isfinite((*new_data)[i + j].z))
+            {
+              // Not a valid point
+              continue;
+            }
+            // Both are valid, check if similar angle
+            if (true)
+            {
+              return i;
+            }
+            else
+            {
+              break;
+            }
+          }
+        }
+        i += cloud[i].how_many;
+      }
+
+      return i;
+    }
+
+    void CANodelet::updateObstacleInformation(pcl::PointCloud<PointXYZTF> * obstacles, const pcl::PointCloud<pcl::PointXYZ>::Ptr new_data, size_t starting_index)
+    {
+      if (starting_index >= obstacles->size())
+      {
+        // This is (hopefully) the first time we got data from this sensor
+        obstacles->resize(obstacles->size() + new_data->width);
+      }
+
+      // Insert the new data starting from starting_index to starting_index + new_data->width
+      for (size_t i = 0; i < new_data->width; ++i)
+      {
+        PointXYZTF point;
+        point.stamp = pcl_conversions::fromPCL(new_data->header.stamp);
+        point.how_many = new_data->width;
+        point.x = std::numeric_limits<float>::quiet_NaN();
+        point.y = std::numeric_limits<float>::quiet_NaN();
+        point.z = std::numeric_limits<float>::quiet_NaN();
+
+        // Take the closest point in column that the robot can collied into
+        for (size_t j = 0; j < new_data->height; ++j)
+        {
+          if (pcl_isfinite(new_data->at(i, j).z) && std::fabs(new_data->at(i, j).z) <= radius_)
+          {
+            // This point is at a height such that the robot can collied with it
+            point.x = new_data->at(i, j).x;
+            point.y = new_data->at(i, j).y;
+            point.z = new_data->at(i, j).z;
+          }
+        }
+
+        obstacles->points[starting_index + i] = point;
+      }
+    }
+
+    void CANodelet::pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr & msg)
     {
       // Transform msg to correct frame
+      sensor_msgs::PointCloud2 transformed_cloud;
+      transformPointcloud("base_link", msg->header.frame_id, msg, &transformed_cloud);
+
+      // Convert it to PCL for easier access to elements
+      pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+      rosToPcl(transformed_cloud, pcl_cloud);
 
       // Check if we already have a message from this sensor (by checking how_many and
       // at which angle the data starts/stops)
-      size_t i = 0;
-      while (i < obstacle_cloud_.size())
-      {
-        if (obstacle_cloud_[i].how_many == msg->size())
-        {
-          // Check if starting/ending angle is sort of the same
-          if (true)
-          {
-            // Overwrite the existing data with the new data
-            return;
-          }
-        }
-        i += obstacle_cloud_[i].how_many;
-      }
+      size_t starting_index = getStartingIndex(obstacle_cloud_, pcl_cloud);
 
-      // This is (hopefully) the first time we got data from this sensor
-      obstacle_cloud_.reserve(obstacle_cloud_.size() + msg->size());
-
-      for (size_t i = 0; i < msg->size(); ++i)
-      {
-        PointXYZTF point;
-        point.stamp = pcl_conversions::fromPCL(msg->header.stamp);
-        point.how_many = msg->size();
-        point.x = (*msg)[i].x;
-        point.y = (*msg)[i].y;
-        point.z = (*msg)[i].z;
-
-        obstacle_cloud_.push_back(point);
-      }
+      // Updated with new obstacle information
+      updateObstacleInformation(&obstacle_cloud_, pcl_cloud, starting_index);
     }
-
-//    void CANodelet::laserScanCallback(const sensor_msgs::LaserScan::ConstPtr & msg)
-//    {
-//      ros::Time now = ros::Time::now();
-
-//      // Remove old sensor data
-//      for (size_t i = 0; i < new_obstacles_.size(); ++i)
-//      {
-//        if ((now - obstacles_acquired_[i]).toSec() > 1)
-//        {
-//          // We discard all data that is older than one second
-//          new_obstacles_[i] = -1;
-//        }
-//      }
-
-
-//      // Change size of vectors is required
-//      int num_elements_for_360 = (2 * M_PI) / msg->angle_increment;
-
-//      if (num_elements_for_360 > new_obstacles_.size())
-//      {
-//        // We have to increase the number of elements in obstacles_
-//        std::vector<double> new_obstacles(num_elements_for_360, -1);
-//        // Set time to zero so it is as old as it can be
-//        std::vector<ros::Time> new_obstacles_acquired_(num_elements_for_360, ros::Time(0));
-
-//        // Input the values from obstacles_
-//        for (size_t i = 0; i < new_obstacles_.size(); ++i)
-//        {
-//          int new_i = num_elements_for_360 * (i / new_obstacles_.size());
-//          new_obstacles[new_i] = new_obstacles_[i];
-//          new_obstacles_acquired_[new_i] = obstacles_acquired_[i];
-//        }
-//      }
-
-
-//      // Input values from new sensor reading
-//      // Transform to robot frame
-
-//    }
-
-    /*
-    void CANodelet::sensorReadingsCallback(const sensor_readings::SensorReadings::ConstPtr & msg)
-    {
-        std::vector<Point> new_obstacles;
-        new_obstacles.reserve(msg->x.size());
-
-        for (size_t i = 0; i < msg->x.size(); ++i)
-        {
-            new_obstacles.push_back(Point(msg->x[i], msg->y[i]));
-        }
-
-        obstacles_ = new_obstacles;
-    }
-    */
 
     void CANodelet::collisionAvoidance(const controller_msgs::Controller::ConstPtr & msg, const double magnitude)
     {
