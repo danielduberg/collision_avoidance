@@ -1,6 +1,5 @@
 #pragma once
 
-#define PCL_NO_PRECOMPILE
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl_ros/transforms.h>
 #include <pcl/filters/filter.h>
@@ -28,15 +27,6 @@
 
 namespace collision_avoidance
 {
-  // http://pointclouds.org/documentation/tutorials/adding_custom_ptype.php#how-to-add-a-new-pointt-type
-  struct PointXYZTF
-  {
-    PCL_ADD_POINT4D;
-    ros::Time stamp;
-    int how_many;
-    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-  } EIGEN_ALIGN16;
-    
     class CANodelet : public nodelet::Nodelet
     {
 
@@ -46,7 +36,7 @@ namespace collision_avoidance
         std::vector<double> new_obstacles_;
         std::vector<ros::Time> obstacles_acquired_;
 
-        pcl::PointCloud<PointXYZTF> obstacle_cloud_;
+        std::vector<pcl::PointCloud<pcl::PointXYZ> > obstacle_cloud_;
 
         // Current pose
         geometry_msgs::PoseStamped current_pose_;
@@ -75,7 +65,7 @@ namespace collision_avoidance
         double min_distance_hold_;
 
         // Subscribers
-        ros::Subscriber sensor_readings_sub_;
+        std::vector<ros::Subscriber> obstacle_sub_;
         ros::Subscriber collision_avoidance_joy_sub_;
         ros::Subscriber collision_avoidance_setpoint_sub_;
         ros::Subscriber odometry_sub_;
@@ -97,11 +87,7 @@ namespace collision_avoidance
 
         void rosToPcl(const sensor_msgs::PointCloud2 & in_cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr out_cloud);
 
-        size_t getStartingIndex(const pcl::PointCloud<PointXYZTF> & cloud, const pcl::PointCloud<pcl::PointXYZ>::Ptr new_data);
-
-        void updateObstacleInformation(pcl::PointCloud<PointXYZTF> * obstacles, const pcl::PointCloud<pcl::PointXYZ>::Ptr new_data, size_t starting_index);
-
-        void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr & msg);
+        void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr & cloud, int index);
 
         void collisionAvoidance(const controller_msgs::Controller::ConstPtr & msg, const double magnitude);
 
