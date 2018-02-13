@@ -9,13 +9,14 @@ project(collision_avoidance)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
   controller_msgs
+  laser_geometry
   nav_msgs
   nodelet
   pcl_conversions
   pcl_ros
   roscpp
   rospy
-  sensor_readings
+  sensor_msgs
   std_msgs
   tf2
   tf2_msgs
@@ -114,8 +115,8 @@ find_package(catkin REQUIRED COMPONENTS
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   INCLUDE_DIRS include
-  LIBRARIES collision_avoidance
-  CATKIN_DEPENDS controller_msgs nodelet pcl_conversions pcl_ros roscpp rospy sensor_readings std_msgs
+  LIBRARIES collision_avoidance laserscan_to_pointcloud_nodelet
+  CATKIN_DEPENDS controller_msgs laser_geometry nodelet pcl_conversions pcl_ros roscpp rospy sensor_msgs std_msgs
 #  DEPENDS system_lib
 )
 
@@ -139,6 +140,10 @@ add_library(${PROJECT_NAME}_nodelet
   src/${PROJECT_NAME}/point.cpp
 )
 
+add_library(laserscan_to_pointcloud_nodelet
+  src/laserscan_to_pointcloud/laserscan_to_pointcloud.cpp
+)
+
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
 ## either from message generation or dynamic reconfigure
@@ -160,7 +165,7 @@ add_dependencies(${PROJECT_NAME}_nodelet ${${PROJECT_NAME}_EXPORTED_TARGETS} ${c
 # add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(${PROJECT_NAME}_nodelet
+target_link_libraries(${PROJECT_NAME}_nodelet laserscan_to_pointcloud_nodelet
   ${catkin_LIBRARIES}
 )
 
@@ -179,7 +184,7 @@ target_link_libraries(${PROJECT_NAME}_nodelet
 # )
 
 ## Mark executables and/or libraries for installation
-install(TARGETS ${PROJECT_NAME}_nodelet
+install(TARGETS ${PROJECT_NAME}_nodelet laserscan_to_pointcloud_nodelet
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
@@ -195,6 +200,7 @@ install(DIRECTORY include/${PROJECT_NAME}/
 ## Mark other files for installation (e.g. launch and bag files, etc.)
 install(FILES
   collision_avoidance_nodelet.xml
+  laserscan_to_pointcloud_nodelet.xml
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )
 
