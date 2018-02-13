@@ -19,7 +19,7 @@ namespace collision_avoidance
 
         for (size_t i = 0; i < obstacles.size(); ++i)
         {
-            if (obstacles[i].x_ == 0 && obstacles[i].y_ == 0)
+            if (!Point::isfinite(obstacles[i]))
             {
                 // No reading here
                 continue;

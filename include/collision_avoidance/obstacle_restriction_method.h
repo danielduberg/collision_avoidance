@@ -8,6 +8,8 @@
 
 #include <collision_avoidance/no_input.h>
 
+#define DEBUG_ORM
+
 namespace collision_avoidance
 {
     // Obstacle-Restriction Method
@@ -23,33 +25,40 @@ namespace collision_avoidance
         double max_opposite_direction_;
 
         ros::NodeHandle nh_;
-        ros::Publisher pub_;
 
         double min_distance_hold_;
 
         NoInput no_input_;
 
+#ifdef DEBUG_ORM
+        ros::Publisher debug_pub_;
+#endif
     public:
         // Done
-        ORM(double radius, double security_distance, double epsilon, double min_distance_hold, double min_change_in_direction, double max_change_in_direction, double min_opposite_direction, double max_opposite_direction);
+        ORM(double radius, double security_distance, double epsilon,
+            double min_distance_hold, double min_change_in_direction,
+            double max_change_in_direction, double min_opposite_direction,
+            double max_opposite_direction);
 
         // Done
-        bool avoidCollision(controller_msgs::Controller * controller, const double magnitude, const std::vector<Point> & obstacles);
+        bool avoidCollision(controller_msgs::Controller * controller,
+                            const double magnitude, const std::vector<Point> & obstacles);
 
     private:
         // Done
         Point initGoal(double x, double y);
 
+        bool isSubgoal(int index, int previous_index, Point * subgoal, const std::vector<Point> & L);
+
         // Done
         Point subgoalSelector(const Point & goal, double magnitude, const std::vector<Point> & L);
 
         // Done
-        // TODO: Take an extra look at this one (45 degrees)
-        void findPotentialAB(const std::vector<Point> & L, const Point & goal, std::vector<Point> * A, std::vector<Point> * B);
-
-        // Done
         // TODO: Take an extra look at this one
-        void getPointsOfInterest(const Point & goal, const std::vector<Point> & L, std::vector<Point> * left, std::vector<Point> * right);
+        void getPointsOfInterest(const Point & goal, const std::vector<Point> & L,
+                                 std::vector<Point> * left, std::vector<Point> * right,
+                                 double max_angle = 180,
+                                 double max_distance = std::numeric_limits<double>::infinity());
 
         // Done
         double getLeftBound(const std::vector<Point> & L, double goal_direction);
@@ -64,16 +73,9 @@ namespace collision_avoidance
         bool isPointInPolygon(const Point & point, const std::vector<Point> & verticies);
 
         // Done
-        bool isPointInsideRectangle(const Point & a, const Point & b, const Point & c, const Point & d, const Point & p);
-
-        // Done
         std::vector<Point> getPointsInPolygon(const std::vector<Point> & L, const std::vector<Point> & verticies);
 
         // Done
-        std::vector<Point> getPointsInRectangle(const std::vector<Point> & L, const Point & a, const Point & b, const Point & c, const Point & d);
-
-        // Done
-        void getRectangle(const Point & goal, double radius, Point * a, Point * b, Point * c, Point * d);
         void getRectangle(const Point & goal, double radius, std::vector<Point> * verticies);
 
         // Done

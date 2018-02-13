@@ -1,10 +1,12 @@
 #include <collision_avoidance/point.h>
 
+#include <limits>
+
 namespace collision_avoidance
 {
     Point::Point()
-        : x_(0)
-        , y_(0)
+        : x_(std::numeric_limits<double>::quiet_NaN())
+        , y_(std::numeric_limits<double>::quiet_NaN())
     {
 
     }
@@ -92,5 +94,18 @@ namespace collision_avoidance
         direction *= (180.0 / M_PI);
     }
 
+    bool Point::isnan(const Point & p)
+    {
+      return std::isnan(p.x_) || std::isnan(p.y_);
+    }
 
+    bool Point::isinf(const Point & p)
+    {
+      return std::isinf(p.x_) || std::isinf(p.y_);
+    }
+
+    bool Point::isfinite(const Point & p)
+    {
+      return !isnan(p) && !isinf(p); // std::isfinite(p.x_) && std::isfinite(p.y_);
+    }
 }

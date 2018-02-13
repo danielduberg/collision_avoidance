@@ -31,6 +31,11 @@ namespace collision_avoidance
 
         static void getVectorFromPointDegrees(const Point & p, double & direction, double & magnitude);
 
+        static bool isnan(const Point & p);
+
+        static bool isinf(const Point & p);
+
+        static bool isfinite(const Point & p);
     };
     
 }

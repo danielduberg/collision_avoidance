@@ -1,3 +1,4 @@
+<?xml version="1.0"?>
 <launch>
     <node pkg="nodelet" type="nodelet" name="safe_flight_manager" args="manager" output="screen" />
     
@@ -12,16 +13,16 @@
     
     
     
-    <arg name="sensor_readings_config_file"
+   <!-- <arg name="sensor_readings_config_file"
        default="$(find sensor_readings)/config/sensor_readings.yaml" />
     
     <node pkg="nodelet" type="nodelet" name="sensor_readings_nodelet" args="load sensor_readings/SR safe_flight_manager" output="screen">
         <rosparam file="$(arg sensor_readings_config_file)" command="load" />
-    </node>
+    </node>-->
     
     
     
     
-    <node name="laser_scan_broadcaster" pkg="tf" type="static_transform_publisher" args="0 0 0 0 0 0 drone laser 10" />
+<!--    <node name="laser_scan_broadcaster" pkg="tf" type="static_transform_publisher" args="0 0 0 0 0 0 drone laser 10" />-->
     
 </launch>

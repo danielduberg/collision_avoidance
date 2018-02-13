@@ -20,7 +20,6 @@
 
 #include <nav_msgs/Odometry.h>
 
-//#include <sensor_readings/SensorReadings.h>
 #include <sensor_msgs/LaserScan.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <controller_msgs/Controller.h>
@@ -32,11 +31,11 @@ namespace collision_avoidance
 
     private:
         // Obstacles
-        std::vector<Point> obstacles_;
-        std::vector<double> new_obstacles_;
-        std::vector<ros::Time> obstacles_acquired_;
-
         std::vector<pcl::PointCloud<pcl::PointXYZ> > obstacle_cloud_;
+
+        // Polar Histogram
+        double max_data_age_;
+        int polar_size_;
 
         // Current pose
         geometry_msgs::PoseStamped current_pose_;
@@ -72,7 +71,6 @@ namespace collision_avoidance
 
         // Publishers
         ros::Publisher collision_free_control_pub_;
-        ros::Publisher rumble_pub_;
 
         // Transform
         tf2_ros::Buffer tf_buffer_;
@@ -83,11 +81,13 @@ namespace collision_avoidance
 
         void init_param(ros::NodeHandle & nh);
 
-        void transformPointcloud(const std::string & target_frame, const std::string & source_frame, const sensor_msgs::PointCloud2::ConstPtr & in_cloud, sensor_msgs::PointCloud2 * out_cloud);
+        void transformPointcloud(const std::string & target_frame, const std::string & source_frame, const sensor_msgs::PointCloud2::ConstPtr & cloud_in, sensor_msgs::PointCloud2 * cloud_out);
 
-        void rosToPcl(const sensor_msgs::PointCloud2 & in_cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr out_cloud);
+        void rosToPcl(const sensor_msgs::PointCloud2 & cloud_in, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_out);
 
         void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr & cloud, int index);
+
+        std::vector<Point> getPolarHistogram(const std::vector<pcl::PointCloud<pcl::PointXYZ> > & obstacle_cloud);
 
         void collisionAvoidance(const controller_msgs::Controller::ConstPtr & msg, const double magnitude);
 
@@ -95,9 +95,9 @@ namespace collision_avoidance
 
         void collisionAvoidanceJoyCallback(const controller_msgs::Controller::Ptr & msg);
 
-        void getEgeDynamicSpace(std::vector<Point> * obstacles);
+        std::vector<Point> getEgeDynamicSpace(const std::vector<Point> & obstacles_in);
 
-        void adjustVelocity(controller_msgs::Controller * control, const double magnitude);
+        void adjustVelocity(const std::vector<Point> & obstacles, controller_msgs::Controller * control, const double magnitude);
 
         void odometryCallback(const nav_msgs::Odometry::ConstPtr & msg);
     };
