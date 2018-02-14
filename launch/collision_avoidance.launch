@@ -5,7 +5,7 @@
 
   <!-- Pass in collision_avoidance_config_file:=/path/to/config.yaml to change options. -->
   <arg name="collision_avoidance_config_file"
-     default="$(find collision_avoidance)/config/collision_avoidance.yaml" />
+     default="$(find collision_avoidance)/config/collision_avoidance_simulation.yaml" />
 
   <node pkg="nodelet" type="nodelet" name="collision_avoidance_nodelet" args="load collision_avoidance/CA collision_avoidance_manager" output="screen">
       <rosparam file="$(arg collision_avoidance_config_file)" command="load" />

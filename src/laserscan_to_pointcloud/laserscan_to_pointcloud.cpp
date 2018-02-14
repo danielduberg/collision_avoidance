@@ -47,7 +47,7 @@ namespace laserscan_to_pointcloud {
       cloud->header.frame_id = scan->header.frame_id;
       cloud->header.stamp = pcl_conversions::toPCL(scan->header.stamp);
 
-      cloud->is_dense = true;
+      cloud->is_dense = false;
       cloud->reserve(scan->ranges.size());
 
       double current_angle = scan->angle_min - scan->angle_increment;
@@ -68,20 +68,20 @@ namespace laserscan_to_pointcloud {
         else if (scan->ranges[i] > scan->range_max)
         {
           // "Invalid" range
-          if (i == 0 || i == scan->ranges.size() - 1)
-          {
+//          if (i == 0 || i == scan->ranges.size() - 1)
+//          {
             // So we know what angle first and last is at (then we can fill in all in between)
             point.x = 1000000 * std::cos(current_angle); // std::numeric_limits<float>::infinity();
             point.y = 1000000 * std::sin(current_angle); //std::numeric_limits<float>::infinity();
             point.z = 0;  // TODO: FIX?
-          }
-          else
-          {
-            point.x = std::numeric_limits<float>::infinity();
-            point.y = std::numeric_limits<float>::infinity();
-            point.z = 0;  // TODO: FIX?
+//          }
+//          else
+//          {
+//            point.x = std::numeric_limits<float>::infinity();
+//            point.y = std::numeric_limits<float>::infinity();
+//            point.z = 0;  // TODO: FIX?
             cloud->is_dense = false;
-          }
+//          }
         }
         else
         {
