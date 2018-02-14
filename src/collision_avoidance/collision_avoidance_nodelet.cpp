@@ -275,10 +275,10 @@ namespace collision_avoidance
         Point goal(msg->twist_stamped.twist.linear.x, msg->twist_stamped.twist.linear.y);
 
         // Multiple by a number to make a setpoint... x and y are between [0,1]
-        msg->twist_stamped.twist.linear.x *= 10;
-        msg->twist_stamped.twist.linear.y *= 10;
+        msg->twist_stamped.twist.linear.x *= 100;
+        msg->twist_stamped.twist.linear.y *= 100;
 
-        collisionAvoidance(msg, Point::getDistance(goal));
+        collisionAvoidance(msg, std::min(1.0, Point::getDistance(goal)));
     }
 
     std::vector<Point> CANodelet::getEgeDynamicSpace(const std::vector<Point> & obstacles_in)

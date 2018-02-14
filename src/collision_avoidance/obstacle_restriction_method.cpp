@@ -145,9 +145,9 @@ namespace collision_avoidance
         angular_diff = std::fabs(angular_diff - 360);
       }
 
-      ROS_FATAL("%f", angular_diff);
+      ////ROS_FATAL("%f", angular_diff);
 
-      if (angular_diff > 130)
+      if (angular_diff > max_change_in_direction_)
       {
         controller->twist_stamped.twist.linear.x = 0;
         controller->twist_stamped.twist.linear.y = 0;
@@ -241,7 +241,9 @@ namespace collision_avoidance
         int wanted_index = Point::getDirectionDegrees(goal) / degrees_per_index;
 
         double change_in_direction = ((max_change_in_direction_ - min_change_in_direction_) * magnitude) + min_change_in_direction_; // 180;
-        double opposite_direction = 0; //((max_opposite_direction_ - min_opposite_direction_) * (1.0 - magnitude)) + min_opposite_direction_; // 0;
+        double opposite_direction = ((max_opposite_direction_ - min_opposite_direction_) * (1.0 - magnitude)) + min_opposite_direction_; // 0;
+
+        ROS_FATAL("Change: %f, Opposite: %f", change_in_direction, opposite_direction);
 
         Point subgoal;
         int subgoal_i = -1;
@@ -493,7 +495,7 @@ namespace collision_avoidance
 
         if (left.size() != 0 && right.size() != 0)
         {
-          ROS_FATAL("Hello");
+          //ROS_FATAL("Hello");
             // Get left and right bounds
             double left_bound = getLeftBound(right, goal_direction);
             double right_bound = getRightBound(left, goal_direction);
@@ -525,7 +527,7 @@ namespace collision_avoidance
             }
             else
             {
-              ROS_FATAL("Middle");
+              //ROS_FATAL("Middle");
                 return Point::getPointFromVectorDegrees(getMidDirection(left_bound, right_bound), Point::getDistance(goal));
             }
         }
