@@ -3,8 +3,6 @@
 
 #include <ros/ros.h>
 
-#include <laser_geometry/laser_geometry.h>
-
 #include <sensor_msgs/LaserScan.h>
 #include <pcl_ros/point_cloud.h>
 #include <pcl_conversions/pcl_conversions.h>
@@ -15,11 +13,11 @@ namespace laserscan_to_pointcloud {
   class LTPNodelet : public nodelet::Nodelet
   {
   private:
-    laser_geometry::LaserProjection projector_;
-
     ros::Subscriber scan_sub_;
 
     ros::Publisher cloud_pub_;
+
+  private:
 
     virtual void onInit()
     {
@@ -80,7 +78,7 @@ namespace laserscan_to_pointcloud {
 //            point.x = std::numeric_limits<float>::infinity();
 //            point.y = std::numeric_limits<float>::infinity();
 //            point.z = 0;  // TODO: FIX?
-            cloud->is_dense = false;
+//            cloud->is_dense = false;
 //          }
         }
         else

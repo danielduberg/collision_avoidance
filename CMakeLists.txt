@@ -9,7 +9,6 @@ project(collision_avoidance)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
   controller_msgs
-  laser_geometry
   nav_msgs
   nodelet
   pcl_conversions
@@ -116,7 +115,7 @@ find_package(catkin REQUIRED COMPONENTS
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES collision_avoidance laserscan_to_pointcloud_nodelet
-  CATKIN_DEPENDS controller_msgs laser_geometry nodelet pcl_conversions pcl_ros roscpp rospy sensor_msgs std_msgs
+  CATKIN_DEPENDS controller_msgs nodelet pcl_conversions pcl_ros roscpp rospy sensor_msgs std_msgs
 #  DEPENDS system_lib
 )
 

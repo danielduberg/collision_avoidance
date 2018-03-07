@@ -295,6 +295,22 @@ namespace collision_avoidance
               continue;
           }
 
+//          // Decrease the distance with 5 cm?!
+//          double dobs = Point::getDistance(obstacles_in[i]);
+
+//          dobs -= radius_;
+
+//          double deff = ab_ * (T_ * T_) * (std::sqrt(1.0 + ((2.0 * dobs) / (ab_ * (T_ * T_)))) - 1.0);
+
+//          deff += radius_;
+
+//          deff = std::min(Point::getDistance(obstacles_in[i]), deff);
+//          deff = std::max(deff, radius_ + 0.01);
+
+//          Point p;
+//          p.x_ = deff * std::cos(Point::getDirection(obstacles_in[i]));
+//          p.y_ = deff * std::sin(Point::getDirection(obstacles_in[i]));
+
           Point p;
           p.x_ = obstacles_in[i].x_ - current_y_vel_;
           p.y_ = obstacles_in[i].y_ - current_x_vel_;
