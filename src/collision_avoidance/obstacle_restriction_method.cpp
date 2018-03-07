@@ -109,23 +109,26 @@ namespace collision_avoidance
         for (size_t i = 0; i < obstacles.size(); ++i)
         {
           pcl::PointXYZI point;
-//            if (Point::isnan(obstacles[i]))
-//            {
-//              point.x = Point::getPointFromVectorDegrees(i * 360.0 / obstacles.size(), radius_).x_;
-//              point.y = Point::getPointFromVectorDegrees(i * 360.0 / obstacles.size(), radius_).y_;
-//            }
-//            else if (Point::isinf(obstacles[i]))
-//            {
-//              point.x = Point::getPointFromVectorDegrees(i * 360.0 / obstacles.size(), radius_ + security_distance_).x_;
-//              point.y = Point::getPointFromVectorDegrees(i * 360.0 / obstacles.size(), radius_ + security_distance_).y_;
-//            }
-//            else
+          if (Point::isnan(obstacles[i]))
+          {
+            point.x = Point::getPointFromVectorDegrees(i * 360.0 / obstacles.size(), radius_).x_;
+            point.y = Point::getPointFromVectorDegrees(i * 360.0 / obstacles.size(), radius_).y_;
+            point.intensity = 0.4;  // Green
+          }
+          else if (Point::isinf(obstacles[i]))
+          {
+            point.x = Point::getPointFromVectorDegrees(i * 360.0 / obstacles.size(), radius_ + security_distance_).x_;
+            point.y = Point::getPointFromVectorDegrees(i * 360.0 / obstacles.size(), radius_ + security_distance_).y_;
+            point.intensity = 0.6;  // ?
+          }
+          else
           {
             point.x = obstacles[i].x_;
             point.y = obstacles[i].y_;
+            point.intensity = 1;  // ?
           }
           point.z = 0.0;
-          point.intensity = 0.4;  // Green
+          
           cloud.points.push_back(point);
         }
 
@@ -466,7 +469,7 @@ namespace collision_avoidance
 
         getPointsOfInterest(goal, L, &left, &right, 180, Point::getDistance(goal) + radius_);
 
-#ifdef DEBUG_ORM
+#ifdef DEBUG_ORM_S
         pcl::PointCloud<pcl::PointXYZI> cloud;
         cloud.header.frame_id = "base_link";
         pcl_conversions::toPCL(ros::Time::now(), cloud.header.stamp);

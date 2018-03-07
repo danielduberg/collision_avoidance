@@ -139,7 +139,7 @@ namespace collision_avoidance
         }
         else
         {
-          if (pcl_isfinite((*pcl_cloud)[i].z) && std::fabs((*pcl_cloud)[i].z) <= radius_)
+          if (pcl_isfinite((*pcl_cloud)[i].z)) // && std::fabs((*pcl_cloud)[i].z) <= radius_)
           {
             // This point is at a height such that the robot can collied with it
             point.x = (*pcl_cloud)[i].x;
@@ -162,7 +162,8 @@ namespace collision_avoidance
         if ((ros::Time::now() - pcl_conversions::fromPCL(cloud[i].header.stamp)).toSec() > max_data_age_)
         {
           // This is older than 1 second, discard!
-          continue;
+          //ROS_FATAL("Hej from %f seconds ago", (ros::Time::now() - pcl_conversions::fromPCL(cloud[i].header.stamp)).toSec());
+          //continue;
         }
 
         int last_index = -1;
