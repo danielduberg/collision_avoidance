@@ -123,12 +123,12 @@ namespace collision_avoidance
         point.y = std::numeric_limits<float>::quiet_NaN();
         point.z = std::numeric_limits<float>::quiet_NaN();
 
-        if (pcl_cloud->is_dense)
+        if (!pcl_cloud->is_dense)
         {
           // Take the closest point in column that the robot can collied into
           for (size_t j = 0; j < pcl_cloud->height; ++j)
           {
-            if (pcl_isfinite(pcl_cloud->at(i, j).z) && std::fabs(pcl_cloud->at(i, j).z) <= radius_)
+            if (pcl_isfinite(pcl_cloud->at(i, j).z) && std::fabs(pcl_cloud->at(i, j).z) <= 2.0 * radius_)
             {
               // This point is at a height such that the robot can collied with it
               point.x = pcl_cloud->at(i, j).x;
@@ -139,7 +139,7 @@ namespace collision_avoidance
         }
         else
         {
-          if (pcl_isfinite((*pcl_cloud)[i].z)) // && std::fabs((*pcl_cloud)[i].z) <= radius_)
+          if (pcl_isfinite((*pcl_cloud)[i].z) && std::fabs((*pcl_cloud)[i].z) <= 2.0 * radius_) // && std::fabs((*pcl_cloud)[i].z) <= radius_)
           {
             // This point is at a height such that the robot can collied with it
             point.x = (*pcl_cloud)[i].x;
