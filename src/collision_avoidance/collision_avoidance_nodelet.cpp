@@ -13,6 +13,9 @@
 
 #include <pcl/PCLPointCloud2.h>
 
+#include <geometry_msgs/TransformStamped.h>
+#include <tf2/utils.h>
+
 PLUGINLIB_EXPORT_CLASS(collision_avoidance::CANodelet, nodelet::Nodelet)
 
 namespace collision_avoidance
@@ -42,8 +45,12 @@ namespace collision_avoidance
         collision_avoidance_setpoint_sub_ = nh.subscribe("/controller/setpoint", 1, &CANodelet::collisionAvoidanceSetpointCallback, this);
         collision_avoidance_joy_sub_ = nh.subscribe("/controller/joy", 1, &CANodelet::collisionAvoidanceJoyCallback, this);
         odometry_sub_ = nh.subscribe<nav_msgs::Odometry>("/mavros/local_position/odom", 1, &CANodelet::odometryCallback, this);
+        imu_sub_ = nh.subscribe<sensor_msgs::Imu>("/mavros/imu/data", 1, &CANodelet::imuCallback, this);
 
         collision_free_control_pub_ = nh.advertise<controller_msgs::Controller>("collision_free_control", 1);
+        cloud_before_pub_ = nh.advertise<sensor_msgs::PointCloud2>("cloud_before_imu", 1);
+        cloud_after_pub_ = nh.advertise<sensor_msgs::PointCloud2>("cloud_after_imu", 1);
+        cloud_obstacle_pub_ = nh.advertise<sensor_msgs::PointCloud2>("cloud_obstacle", 1);
 
         orm_ = new ORM(radius_, security_distance_, epsilon_, min_distance_hold_, min_change_in_direction_, max_change_in_direction_, min_opposite_direction_, max_opposite_direction_);
     }
@@ -69,6 +76,8 @@ namespace collision_avoidance
 
         nh.param<double>("max_data_age", max_data_age_, 1.0);
         nh.param<int>("polar_size", polar_size_, 360);
+
+        nh.param<double>("height", height_, radius_);
     }
 
     void CANodelet::transformPointcloud(const std::string & target_frame, const std::string & source_frame, const sensor_msgs::PointCloud2::ConstPtr & cloud_in, sensor_msgs::PointCloud2 * cloud_out)
@@ -97,16 +106,36 @@ namespace collision_avoidance
     void CANodelet::pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr & cloud, int index)
     {
       // Transform msg to correct frame
-      sensor_msgs::PointCloud2 transformed_cloud;
+      sensor_msgs::PointCloud2 transformed_cloud2;
       try
       {
-        transformPointcloud("base_link", cloud->header.frame_id, cloud, &transformed_cloud);
+        transformPointcloud("base_link", cloud->header.frame_id, cloud, &transformed_cloud2);
       }
       catch (tf2::TransformException & ex)
       {
         NODELET_WARN("%s", ex.what());
         return;
       }
+
+      cloud_before_pub_.publish(transformed_cloud2);
+
+      sensor_msgs::PointCloud2 transformed_cloud;
+
+      // Stabilize it using IMU data
+      double yaw, pitch, roll;
+      tf2::getEulerYPR(imu_.orientation, yaw, pitch, roll);
+      tf2::Quaternion q;
+      q.setRPY(roll, pitch, 0);
+      geometry_msgs::TransformStamped transform;
+      transform.transform.rotation.x = q.x();
+      transform.transform.rotation.y = q.y();
+      transform.transform.rotation.z = q.z();
+      transform.transform.rotation.w = q.w();
+      tf2::doTransform(transformed_cloud2, transformed_cloud, transform);
+
+      transformed_cloud.header = transformed_cloud2.header;
+
+      cloud_after_pub_.publish(transformed_cloud);
 
       // Convert it to PCL for easier access to elements
       pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_cloud(new pcl::PointCloud<pcl::PointXYZ>);
@@ -128,7 +157,7 @@ namespace collision_avoidance
           // Take the closest point in column that the robot can collied into
           for (size_t j = 0; j < pcl_cloud->height; ++j)
           {
-            if (pcl_isfinite(pcl_cloud->at(i, j).z) && std::fabs(pcl_cloud->at(i, j).z) <= 2.0 * radius_)
+            if (pcl_isfinite(pcl_cloud->at(i, j).z) && std::fabs(pcl_cloud->at(i, j).z) <= 0.6 * height_)
             {
               // This point is at a height such that the robot can collied with it
               point.x = pcl_cloud->at(i, j).x;
@@ -139,7 +168,7 @@ namespace collision_avoidance
         }
         else
         {
-          if (pcl_isfinite((*pcl_cloud)[i].z) && std::fabs((*pcl_cloud)[i].z) <= 2.0 * radius_) // && std::fabs((*pcl_cloud)[i].z) <= radius_)
+          if (pcl_isfinite((*pcl_cloud)[i].z) && std::fabs((*pcl_cloud)[i].z) <= 0.6 * height_) // && std::fabs((*pcl_cloud)[i].z) <= radius_)
           {
             // This point is at a height such that the robot can collied with it
             point.x = (*pcl_cloud)[i].x;
@@ -150,6 +179,8 @@ namespace collision_avoidance
 
         obstacle_cloud_[index][i] = point;
       }
+
+      cloud_obstacle_pub_.publish(obstacle_cloud_[index]);
     }
 
     std::vector<Point> CANodelet::getPolarHistogram(const std::vector<pcl::PointCloud<pcl::PointXYZ> > & cloud)
@@ -365,5 +396,15 @@ namespace collision_avoidance
     {
         current_x_vel_ = msg->twist.twist.linear.y; // This should be y?
         current_y_vel_ = msg->twist.twist.linear.x; // This should be x?
+    }
+
+    void CANodelet::imuCallback(const sensor_msgs::Imu::ConstPtr& imu)
+    {
+      imu_ = *imu;
+
+      double yaw, pitch, roll;
+      tf2::getEulerYPR(imu_.orientation, yaw, pitch, roll);
+
+      ROS_FATAL("%f, %f, %f", yaw, pitch, roll);
     }
 }

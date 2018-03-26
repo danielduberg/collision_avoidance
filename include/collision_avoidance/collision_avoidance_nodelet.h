@@ -22,6 +22,8 @@
 
 #include <sensor_msgs/LaserScan.h>
 #include <sensor_msgs/PointCloud2.h>
+#include <sensor_msgs/Imu.h>
+
 #include <controller_msgs/Controller.h>
 
 namespace collision_avoidance
@@ -40,6 +42,9 @@ namespace collision_avoidance
         // Current pose
         geometry_msgs::PoseStamped current_pose_;
 
+        // Current imu;
+        sensor_msgs::Imu imu_;
+
         // Current velocity
         double current_x_vel_;
         double current_y_vel_;
@@ -49,6 +54,9 @@ namespace collision_avoidance
         double radius_;
         double security_distance_;
         double epsilon_;
+
+        //
+        double height_;
 
         // Tele-op
         double min_change_in_direction_;
@@ -68,9 +76,13 @@ namespace collision_avoidance
         ros::Subscriber collision_avoidance_joy_sub_;
         ros::Subscriber collision_avoidance_setpoint_sub_;
         ros::Subscriber odometry_sub_;
+        ros::Subscriber imu_sub_;
 
         // Publishers
         ros::Publisher collision_free_control_pub_;
+        ros::Publisher cloud_before_pub_;
+        ros::Publisher cloud_after_pub_;
+        ros::Publisher cloud_obstacle_pub_;
 
         // Transform
         tf2_ros::Buffer tf_buffer_;
@@ -100,6 +112,8 @@ namespace collision_avoidance
         void adjustVelocity(const std::vector<Point> & obstacles, controller_msgs::Controller * control, const double magnitude);
 
         void odometryCallback(const nav_msgs::Odometry::ConstPtr & msg);
+
+        void imuCallback(const sensor_msgs::Imu::ConstPtr& imu);
     };
     
 }
