@@ -20,7 +20,6 @@ PLUGINLIB_EXPORT_CLASS(collision_avoidance::CANodelet, nodelet::Nodelet)
 
 namespace collision_avoidance
 {
-
     void CANodelet::onInit()
     {
         ros::NodeHandle & nh = getNodeHandle();
