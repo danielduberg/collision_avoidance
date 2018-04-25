@@ -2,13 +2,14 @@ cmake_minimum_required(VERSION 2.8.3)
 project(collision_avoidance)
 
 ## Add support for C++11, supported in ROS Kinetic and newer
-# add_definitions(-std=c++11)
+add_definitions(-std=c++11)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
   controller_msgs
+  dynamic_reconfigure
   nav_msgs
   nodelet
   pcl_conversions
@@ -98,10 +99,9 @@ find_package(catkin REQUIRED COMPONENTS
 ##     and list every .cfg file to be processed
 
 ## Generate dynamic reconfigure parameters in the 'cfg' folder
-# generate_dynamic_reconfigure_options(
-#   cfg/DynReconf1.cfg
-#   cfg/DynReconf2.cfg
-# )
+generate_dynamic_reconfigure_options(
+  cfg/CollisionAvoidance.cfg
+)
 
 ###################################
 ## catkin specific configuration ##
@@ -115,7 +115,7 @@ find_package(catkin REQUIRED COMPONENTS
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES collision_avoidance laserscan_to_pointcloud_nodelet
-  CATKIN_DEPENDS controller_msgs nodelet pcl_conversions pcl_ros roscpp rospy sensor_msgs std_msgs
+  CATKIN_DEPENDS controller_msgs dynamic_reconfigure nodelet pcl_conversions pcl_ros roscpp rospy sensor_msgs std_msgs
 #  DEPENDS system_lib
 )
 
@@ -146,7 +146,7 @@ add_library(laserscan_to_pointcloud_nodelet
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
 ## either from message generation or dynamic reconfigure
-add_dependencies(${PROJECT_NAME}_nodelet ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(${PROJECT_NAME}_nodelet ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_gencfg)
 
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context

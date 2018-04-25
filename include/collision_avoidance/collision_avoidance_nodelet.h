@@ -26,6 +26,9 @@
 
 #include <controller_msgs/Controller.h>
 
+#include <dynamic_reconfigure/server.h>
+#include <collision_avoidance/CollisionAvoidanceConfig.h>
+
 namespace collision_avoidance
 {
     class CANodelet : public nodelet::Nodelet
@@ -84,6 +87,10 @@ namespace collision_avoidance
         ros::Publisher cloud_after_pub_;
         ros::Publisher cloud_obstacle_pub_;
 
+        // Dynamic reconfigure
+        dynamic_reconfigure::Server<collision_avoidance::CollisionAvoidanceConfig> cs_;
+        dynamic_reconfigure::Server<collision_avoidance::CollisionAvoidanceConfig>::CallbackType f_;
+
         // Transform
         tf2_ros::Buffer tf_buffer_;
         tf2_ros::TransformListener * tf_listener_;
@@ -114,6 +121,8 @@ namespace collision_avoidance
         void odometryCallback(const nav_msgs::Odometry::ConstPtr & msg);
 
         void imuCallback(const sensor_msgs::Imu::ConstPtr& imu);
+
+        void configCallback(collision_avoidance::CollisionAvoidanceConfig& config, uint32_t level);
     };
     
 }
