@@ -1,6 +1,7 @@
 #include <pluginlib/class_list_macros.h>
 
 #include <collision_avoidance/collision_avoidance_nodelet.h>
+#include <collision_avoidance/no_input.h>
 
 #include <limits>
 
@@ -10,6 +11,7 @@
 #include <tf2_eigen/tf2_eigen.h>
 
 #include <geometry_msgs/TransformStamped.h>
+#include <geometry_msgs/TwistStamped.h>
 
 #include <pcl/PCLPointCloud2.h>
 
@@ -29,7 +31,7 @@ void CANodelet::onInit()
   f_ = boost::bind(&CANodelet::configCallback, this, _1, _2);
   cs_.setCallback(f_);
 
-  init_param(nh_priv);
+  tf_listener_ = new tf2_ros::TransformListener(tf_buffer_);
 
   std::vector<std::string> obstacle_topics;
   if (!nh_priv.getParam("obstacle_topics", obstacle_topics))
@@ -47,18 +49,15 @@ void CANodelet::onInit()
         boost::bind(&CANodelet::pointCloudCallback, this, _1, i)));
   }
 
-  collision_avoidance_setpoint_sub_ =
-      nh.subscribe("/controller/setpoint", 1,
-                   &CANodelet::collisionAvoidanceSetpointCallback, this);
-  collision_avoidance_joy_sub_ = nh.subscribe(
-      "/controller/joy", 1, &CANodelet::collisionAvoidanceJoyCallback, this);
+  setpoint_sub_ =
+      nh.subscribe("/setpoint", 1, &CANodelet::setpointCallback, this);
   odometry_sub_ = nh.subscribe<nav_msgs::Odometry>(
       "/mavros/local_position/odom", 1, &CANodelet::odometryCallback, this);
   imu_sub_ = nh.subscribe<sensor_msgs::Imu>("/mavros/imu/data", 1,
                                             &CANodelet::imuCallback, this);
 
-  collision_free_control_pub_ =
-      nh.advertise<controller_msgs::Controller>("collision_free_control", 1);
+  collision_free_control_pub_ = nh.advertise<geometry_msgs::TwistStamped>(
+      "/mavros/setpoint_velocity/cmd_vel", 1);
   cloud_before_pub_ =
       nh.advertise<sensor_msgs::PointCloud2>("cloud_before_imu", 1);
   cloud_after_pub_ =
@@ -66,34 +65,7 @@ void CANodelet::onInit()
   cloud_obstacle_pub_ =
       nh.advertise<sensor_msgs::PointCloud2>("cloud_obstacle", 1);
 
-  orm_ = new ORM(radius_, security_distance_, epsilon_, min_distance_hold_,
-                 min_change_in_direction_, max_change_in_direction_,
-                 min_opposite_direction_, max_opposite_direction_);
-}
-
-void CANodelet::init_param(ros::NodeHandle& nh)
-{
-  nh.param<double>("radius", radius_, 0);
-  nh.param<double>("security_distance", security_distance_, 0);
-  nh.param<double>("epsilon", epsilon_, 0.1);
-
-  nh.param<double>("min_change_in_direction", min_change_in_direction_, -180);
-  nh.param<double>("max_change_in_direction", max_change_in_direction_, 180);
-
-  nh.param<double>("min_opposite_direction", min_opposite_direction_, -180);
-  nh.param<double>("max_opposite_direction", max_opposite_direction_, 180);
-
-  nh.param<double>("ab", ab_, 3.0);
-  nh.param<double>("T", T_, 0.3);
-
-  nh.param<double>("min_distance_hold", min_distance_hold_, 0.3);
-
-  tf_listener_ = new tf2_ros::TransformListener(tf_buffer_);
-
-  nh.param<double>("max_data_age", max_data_age_, 1.0);
-  nh.param<int>("polar_size", polar_size_, 360);
-
-  nh.param<double>("height", height_, radius_);
+  no_input_timer_ = nh.createTimer(ros::Rate(5), &CANodelet::timerCallback, this);
 }
 
 void CANodelet::transformPointcloud(
@@ -132,7 +104,7 @@ void CANodelet::pointCloudCallback(
   sensor_msgs::PointCloud2 transformed_cloud2;
   try
   {
-    transformPointcloud("base_link", cloud->header.frame_id, cloud,
+    transformPointcloud(robot_frame_, cloud->header.frame_id, cloud,
                         &transformed_cloud2);
   }
   catch (tf2::TransformException& ex)
@@ -184,7 +156,7 @@ void CANodelet::pointCloudCallback(
       for (size_t j = 0; j < pcl_cloud->height; ++j)
       {
         if (pcl_isfinite(pcl_cloud->at(i, j).z) &&
-            std::fabs(pcl_cloud->at(i, j).z) <= 0.6 * height_)
+            std::fabs(pcl_cloud->at(i, j).z) <= 0.6 * robot_height_)
         {
           // This point is at a height such that the robot can collied with it
           point.x = pcl_cloud->at(i, j).x;
@@ -197,7 +169,8 @@ void CANodelet::pointCloudCallback(
     {
       if (pcl_isfinite((*pcl_cloud)[i].z) &&
           std::fabs((*pcl_cloud)[i].z) <=
-              0.6 * height_) // && std::fabs((*pcl_cloud)[i].z) <= radius_)
+              0.6 *
+                  robot_height_) // && std::fabs((*pcl_cloud)[i].z) <= radius_)
       {
         // This point is at a height such that the robot can collied with it
         point.x = (*pcl_cloud)[i].x;
@@ -304,69 +277,86 @@ std::vector<Point> CANodelet::getPolarHistogram(
   return polar_hist;
 }
 
-void CANodelet::collisionAvoidance(
-    const controller_msgs::Controller::ConstPtr& msg, const double magnitude)
+void CANodelet::setpointCallback(
+    const geometry_msgs::PoseStamped::ConstPtr& msg)
 {
-  controller_msgs::Controller collision_free_control = *msg;
+  no_input_timer_.stop();
 
-  std::vector<Point> obstacles =
-      getPolarHistogram(obstacle_cloud_); // = obstacles_;
+  geometry_msgs::TwistStamped collision_free_control;
+
+  // Transform to robot frame
+  geometry_msgs::TransformStamped transform;
+  try
+  {
+    transform = tf_buffer_.lookupTransform(robot_frame_, msg->header.frame_id,
+                                           ros::Time(0));
+
+    geometry_msgs::PoseStamped setpoint;
+    tf2::doTransform(*msg, setpoint, transform);
+
+    collision_free_control.header = setpoint.header;
+    collision_free_control.twist.linear.x = setpoint.pose.position.x;
+    collision_free_control.twist.linear.y = setpoint.pose.position.y;
+    collision_free_control.twist.linear.z = setpoint.pose.position.z;
+
+    collision_free_control.twist.angular.z =
+        tf2::getYaw(setpoint.pose.orientation);
+  }
+  catch (tf2::TransformException& ex)
+  {
+    ROS_WARN_THROTTLE(1, "Collision Avoidance: %s", ex.what());
+    collision_free_control.header.stamp = ros::Time::now();
+    collision_free_control.header.frame_id = robot_frame_;
+  }
+
+  collision_free_control.twist.linear.z =
+      std::min(collision_free_control.twist.linear.z, max_z_vel_);
+  collision_free_control.twist.linear.z =
+      std::max(collision_free_control.twist.linear.z, -max_z_vel_);
+
+  collision_free_control.twist.angular.z =
+      std::min(collision_free_control.twist.angular.z, max_yaw_rate_);
+  collision_free_control.twist.angular.z =
+      std::max(collision_free_control.twist.angular.z, -max_yaw_rate_);
+
+  double magnitude =
+      std::min(std::sqrt(std::pow(collision_free_control.twist.linear.x, 2) +
+                         std::pow(collision_free_control.twist.linear.y, 2)),
+               1.0);
+
+  std::vector<Point> obstacles = getPolarHistogram(obstacle_cloud_);
 
   obstacles = getEgeDynamicSpace(obstacles);
 
   // First pass
-  orm_->avoidCollision(&collision_free_control, magnitude, obstacles);
+  ORM::avoidCollision(&collision_free_control, magnitude, obstacles, radius_,
+                      security_distance_, epsilon_, min_distance_hold_,
+                      min_change_in_direction_, max_change_in_direction_,
+                      min_opposite_direction_, max_opposite_direction_);
 
-  // Second pass
-  //        controller_msgs::Controller second_pass_collision_free_control =
-  //        collision_free_control;
-
-  //        orm_->avoidCollision(&second_pass_collision_free_control, magnitude,
-  //        obstacles);
-
-  //        // If there is a big difference between first and second pass then
-  //        it is not safe to move!
-  //        Point
-  //        first_pass(collision_free_control.twist_stamped.twist.linear.x,
-  //        collision_free_control.twist_stamped.twist.linear.y);
-  //        Point
-  //        second_pass(second_pass_collision_free_control.twist_stamped.twist.linear.x,
-  //        second_pass_collision_free_control.twist_stamped.twist.linear.y);
-  //        double dir_diff =
-  //        std::fmod(std::fabs(Point::getDirectionDegrees(first_pass) -
-  //        Point::getDirectionDegrees(second_pass)), 180.0);
-  //        if (dir_diff > 140)
-  //        {
-  //          collision_free_control.twist_stamped.twist.linear.x = 0.0;
-  //          collision_free_control.twist_stamped.twist.linear.y = 0.0;
-  //          orm_->avoidCollision(&collision_free_control, magnitude,
-  //          obstacles);
-  //        }
-
-  // Adjust the velocity
   adjustVelocity(obstacles, &collision_free_control, magnitude);
 
   // Publish the collision free control
   collision_free_control_pub_.publish(collision_free_control);
+
+  no_input_timer_.start();
 }
 
-void CANodelet::collisionAvoidanceSetpointCallback(
-    const controller_msgs::Controller::ConstPtr& msg)
+void CANodelet::timerCallback(const ros::TimerEvent& event)
 {
-  collisionAvoidance(msg, 1.0);
-}
+  geometry_msgs::TwistStamped collision_free_control;
+  collision_free_control.header.stamp = ros::Time::now();
+  collision_free_control.header.frame_id = robot_frame_;
 
-void CANodelet::collisionAvoidanceJoyCallback(
-    const controller_msgs::Controller::Ptr& msg)
-{
-  Point goal(msg->twist_stamped.twist.linear.x,
-             msg->twist_stamped.twist.linear.y);
+  std::vector<Point> obstacles = getPolarHistogram(obstacle_cloud_);
 
-  // Multiple by a number to make a setpoint... x and y are between [0,1]
-  msg->twist_stamped.twist.linear.x *= 100;
-  msg->twist_stamped.twist.linear.y *= 100;
+  obstacles = getEgeDynamicSpace(obstacles);
 
-  collisionAvoidance(msg, std::min(1.0, Point::getDistance(goal)));
+  NoInput::avoidCollision(&collision_free_control, obstacles, radius_, min_distance_hold_);
+
+  //adjustVelocity(obstacles, &collision_free_control, 1.0);
+
+  collision_free_control_pub_.publish(collision_free_control);
 }
 
 std::vector<Point>
@@ -421,11 +411,10 @@ CANodelet::getEgeDynamicSpace(const std::vector<Point>& obstacles_in)
 }
 
 void CANodelet::adjustVelocity(const std::vector<Point>& obstacles,
-                               controller_msgs::Controller* control,
+                               geometry_msgs::TwistStamped* control,
                                const double magnitude)
 {
-  if (control->twist_stamped.twist.linear.x == 0 &&
-      control->twist_stamped.twist.linear.y == 0)
+  if (control->twist.linear.x == 0 && control->twist.linear.y == 0)
   {
     return;
   }
@@ -441,18 +430,19 @@ void CANodelet::adjustVelocity(const std::vector<Point>& obstacles,
     }
   }
 
-  Point goal(control->twist_stamped.twist.linear.x,
-             control->twist_stamped.twist.linear.y);
+  Point goal(control->twist.linear.x, control->twist.linear.y);
   double direction = Point::getDirectionDegrees(goal);
 
-  double updated_magnitude = std::min(
-      closest_obstacle_distance / (radius_ + security_distance_), magnitude);
+  double updated_magnitude =
+      max_xy_vel_ *
+      std::min(closest_obstacle_distance / (radius_ + security_distance_),
+               magnitude);
 
   Point updated_goal =
       Point::getPointFromVectorDegrees(direction, updated_magnitude);
 
-  control->twist_stamped.twist.linear.x = updated_goal.x_;
-  control->twist_stamped.twist.linear.y = updated_goal.y_;
+  control->twist.linear.x = updated_goal.x_;
+  control->twist.linear.y = updated_goal.y_;
 }
 
 void CANodelet::odometryCallback(const nav_msgs::Odometry::ConstPtr& msg)
@@ -473,6 +463,9 @@ void CANodelet::imuCallback(const sensor_msgs::Imu::ConstPtr& imu)
 
 void CANodelet::configCallback(CollisionAvoidanceConfig& config, uint32_t level)
 {
+  robot_frame_ = config.robot_frame;
+  robot_height_ = config.robot_height;
+
   radius_ = config.radius;
   security_distance_ = config.security_distance;
   epsilon_ = config.epsilon;
@@ -485,5 +478,9 @@ void CANodelet::configCallback(CollisionAvoidanceConfig& config, uint32_t level)
 
   max_data_age_ = config.max_data_age;
   polar_size_ = config.polar_size;
+
+  max_xy_vel_ = config.max_xy_vel;
+  max_z_vel_ = config.max_z_vel;
+  max_yaw_rate_ = config.max_yaw_rate * M_PI / 180.0;
 }
 }

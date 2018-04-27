@@ -2,27 +2,22 @@
 
 #include <ros/ros.h>
 
-#include <controller_msgs/Controller.h>
+#include <geometry_msgs/TwistStamped.h>
 
 #include <collision_avoidance/point.h>
 
 namespace collision_avoidance
 {
-    
-    class NoInput
-    {
-    private:
-        double radius_;
-        double security_distance_;
-        double min_distance_hold_;
 
-    public:
-        NoInput(double radius, double security_distance, double min_distance_hold);
+class NoInput
+{
+public:
+  static void avoidCollision(geometry_msgs::TwistStamped* control,
+                             const std::vector<Point>& obstacles, double radius,
+                             double min_distance_hold);
 
-        void avoidCollision(controller_msgs::Controller * control, const std::vector<Point> & obstacles);
-
-    private:
-
-    };
-    
+private:
+  // Disallow creating an instance of this object
+  NoInput();
+};
 }

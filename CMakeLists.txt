@@ -8,7 +8,6 @@ add_definitions(-std=c++11)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
-  controller_msgs
   dynamic_reconfigure
   nav_msgs
   nodelet
@@ -16,7 +15,6 @@ find_package(catkin REQUIRED COMPONENTS
   pcl_ros
   roscpp
   rospy
-  sensor_msgs
   std_msgs
   tf2
   tf2_msgs
@@ -115,7 +113,7 @@ generate_dynamic_reconfigure_options(
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES collision_avoidance laserscan_to_pointcloud_nodelet
-  CATKIN_DEPENDS controller_msgs dynamic_reconfigure nodelet pcl_conversions pcl_ros roscpp rospy sensor_msgs std_msgs
+  CATKIN_DEPENDS dynamic_reconfigure nodelet pcl_conversions pcl_ros roscpp rospy std_msgs
 #  DEPENDS system_lib
 )
 

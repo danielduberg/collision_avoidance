@@ -2,87 +2,75 @@
 
 #include <ros/ros.h>
 
-#include <controller_msgs/Controller.h>
+#include <geometry_msgs/TwistStamped.h>
 
 #include <collision_avoidance/point.h>
-
-#include <collision_avoidance/no_input.h>
 
 #define DEBUG_ORM
 
 namespace collision_avoidance
 {
-    // Obstacle-Restriction Method
-    class ORM
-    {
-    private:
-        double radius_;
-        double security_distance_;
-        double epsilon_;
-        double min_change_in_direction_;
-        double max_change_in_direction_;
-        double min_opposite_direction_;
-        double max_opposite_direction_;
+// Obstacle-Restriction Method
+class ORM
+{
+private:
+  // Disallow creating an instance of this object
+  ORM();
 
-        ros::NodeHandle nh_;
+public:
+  static bool
+  avoidCollision(geometry_msgs::TwistStamped* controller,
+                 const double magnitude, const std::vector<Point>& obstacles,
+                 double radius, double security_distance, double epsilon,
+                 double min_distance_hold, double min_change_in_direction,
+                 double max_change_in_direction, double min_opposite_direction,
+                 double max_opposite_direction);
 
-        double min_distance_hold_;
+private:
+  static Point initGoal(double x, double y);
 
-        NoInput no_input_;
+  static bool isSubgoal(int index, int previous_index, Point* subgoal,
+                        const std::vector<Point>& L, double radius,
+                        double security_distance, double epsilon);
 
-#ifdef DEBUG_ORM
-        ros::Publisher debug_pub_;
-#endif
-    public:
-        // Done
-        ORM(double radius, double security_distance, double epsilon,
-            double min_distance_hold, double min_change_in_direction,
-            double max_change_in_direction, double min_opposite_direction,
-            double max_opposite_direction);
+  static Point subgoalSelector(const Point& goal, double magnitude,
+                               const std::vector<Point>& L, double radius,
+                               double security_distance, double epsilon,
+                               double min_change_in_direction,
+                               double max_change_in_direction,
+                               double min_opposite_direction,
+                               double max_opposite_direction);
 
-        // Done
-        bool avoidCollision(controller_msgs::Controller * controller,
-                            const double magnitude, const std::vector<Point> & obstacles);
+  // TODO: Take an extra look at this one
+  static void getPointsOfInterest(
+      const Point& goal, const std::vector<Point>& L, std::vector<Point>* left,
+      std::vector<Point>* right, double radius, double security_distance,
+      double max_angle = 180,
+      double max_distance = std::numeric_limits<double>::infinity());
 
-    private:
-        // Done
-        Point initGoal(double x, double y);
+  static double getLeftBound(const std::vector<Point>& L, double goal_direction,
+                             double radius, double security_distance);
 
-        bool isSubgoal(int index, int previous_index, Point * subgoal, const std::vector<Point> & L);
+  static double getRightBound(const std::vector<Point>& L,
+                              double goal_direction, double radius,
+                              double security_distance);
 
-        // Done
-        Point subgoalSelector(const Point & goal, double magnitude, const std::vector<Point> & L);
+  static Point motionComputation(const Point& goal, const std::vector<Point>& L,
+                                 double radius, double security_distance);
 
-        // Done
-        // TODO: Take an extra look at this one
-        void getPointsOfInterest(const Point & goal, const std::vector<Point> & L,
-                                 std::vector<Point> * left, std::vector<Point> * right,
-                                 double max_angle = 180,
-                                 double max_distance = std::numeric_limits<double>::infinity());
+  static bool isPointInPolygon(const Point& point,
+                               const std::vector<Point>& verticies);
 
-        // Done
-        double getLeftBound(const std::vector<Point> & L, double goal_direction);
+  static std::vector<Point>
+  getPointsInPolygon(const std::vector<Point>& L,
+                     const std::vector<Point>& verticies);
 
-        // Done
-        double getRightBound(const std::vector<Point> & L, double goal_direction);
+  static void getRectangle(const Point& goal, double radius,
+                           std::vector<Point>* verticies);
 
-        // Done
-        Point motionComputation(const Point & goal, const std::vector<Point> & L);
+  static bool isClearPath(const Point& goal, const std::vector<Point>& L,
+                          double radius, double security_distance);
 
-        // Done
-        bool isPointInPolygon(const Point & point, const std::vector<Point> & verticies);
-
-        // Done
-        std::vector<Point> getPointsInPolygon(const std::vector<Point> & L, const std::vector<Point> & verticies);
-
-        // Done
-        void getRectangle(const Point & goal, double radius, std::vector<Point> * verticies);
-
-        // Done
-        bool isClearPath(const Point & goal, const std::vector<Point> & L);
-
-        // Done
-        double getMidDirection(double d1, double d2);
-    };
-    
+  static double getMidDirection(double d1, double d2);
+};
 }
