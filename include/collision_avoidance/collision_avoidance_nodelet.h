@@ -24,8 +24,6 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/Imu.h>
 
-#include <controller_msgs/Controller.h>
-
 #include <dynamic_reconfigure/server.h>
 #include <collision_avoidance/CollisionAvoidanceConfig.h>
 
