@@ -185,8 +185,8 @@ Point ORM::subgoalSelector(const Point& goal, double magnitude,
       ((max_opposite_direction - min_opposite_direction) * (1.0 - magnitude)) +
       min_opposite_direction; // 0;
 
-  ROS_FATAL("Change: %f, Opposite: %f", change_in_direction,
-            opposite_direction);
+  //ROS_FATAL("Change: %f, Opposite: %f", change_in_direction,
+  //          opposite_direction);
 
   Point subgoal;
   int subgoal_i = -1;

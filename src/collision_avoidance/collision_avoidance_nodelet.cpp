@@ -57,7 +57,7 @@ void CANodelet::onInit()
                                             &CANodelet::imuCallback, this);
 
   collision_free_control_pub_ = nh.advertise<geometry_msgs::TwistStamped>(
-      "/mavros/setpoint_velocity/cmd_vel", 1);
+      "/collision_free_control", 1);
   cloud_before_pub_ =
       nh.advertise<sensor_msgs::PointCloud2>("cloud_before_imu", 1);
   cloud_after_pub_ =
@@ -435,7 +435,7 @@ void CANodelet::adjustVelocity(const std::vector<Point>& obstacles,
 
   double updated_magnitude =
       max_xy_vel_ *
-      std::min(closest_obstacle_distance / (radius_ + security_distance_),
+      std::min(closest_obstacle_distance / (h_m_ * (radius_ + security_distance_)),
                magnitude);
 
   Point updated_goal =
@@ -458,7 +458,7 @@ void CANodelet::imuCallback(const sensor_msgs::Imu::ConstPtr& imu)
   double yaw, pitch, roll;
   tf2::getEulerYPR(imu_.orientation, yaw, pitch, roll);
 
-  ROS_FATAL("%f, %f, %f", yaw, pitch, roll);
+  //ROS_FATAL("%f, %f, %f", yaw, pitch, roll);
 }
 
 void CANodelet::configCallback(CollisionAvoidanceConfig& config, uint32_t level)
@@ -469,6 +469,9 @@ void CANodelet::configCallback(CollisionAvoidanceConfig& config, uint32_t level)
   radius_ = config.radius;
   security_distance_ = config.security_distance;
   epsilon_ = config.epsilon;
+
+  min_distance_hold_ = config.min_distance_hold;
+  h_m_ = config.h_m;
 
   min_change_in_direction_ = config.min_change_in_direction;
   max_change_in_direction_ = config.max_change_in_direction;

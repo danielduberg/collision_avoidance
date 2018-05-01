@@ -77,6 +77,9 @@ private:
   // No input
   double min_distance_hold_;
 
+  // Emperically measured constant for speed reduction
+  double h_m_;
+
   // Subscribers
   std::vector<ros::Subscriber> obstacle_sub_;
   ros::Subscriber setpoint_sub_;
@@ -118,8 +121,7 @@ private:
   std::vector<Point> getPolarHistogram(
       const std::vector<pcl::PointCloud<pcl::PointXYZ>>& obstacle_cloud);
 
-  void setpointCallback(
-      const geometry_msgs::PoseStamped::ConstPtr& msg);
+  void setpointCallback(const geometry_msgs::PoseStamped::ConstPtr& msg);
 
   void timerCallback(const ros::TimerEvent& event);
 
