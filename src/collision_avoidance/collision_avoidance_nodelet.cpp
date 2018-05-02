@@ -29,7 +29,8 @@ void CANodelet::onInit()
 
   // Set up dynamic reconfigure server
   f_ = boost::bind(&CANodelet::configCallback, this, _1, _2);
-  cs_.setCallback(f_);
+  cs_ = new dynamic_reconfigure::Server<collision_avoidance::CollisionAvoidanceConfig>(nh_priv);
+  cs_->setCallback(f_);
 
   tf_listener_ = new tf2_ros::TransformListener(tf_buffer_);
 
@@ -53,11 +54,14 @@ void CANodelet::onInit()
       nh.subscribe("/setpoint", 1, &CANodelet::setpointCallback, this);
   odometry_sub_ = nh.subscribe<nav_msgs::Odometry>(
       "/mavros/local_position/odom", 1, &CANodelet::odometryCallback, this);
+  // Change this to use odom instead?
+  pose_sub_ = nh.subscribe<geometry_msgs::PoseStamped>(
+      "/mavros/local_position/pose", 1, &CANodelet::poseCallback, this);
   imu_sub_ = nh.subscribe<sensor_msgs::Imu>("/mavros/imu/data", 1,
                                             &CANodelet::imuCallback, this);
 
-  collision_free_control_pub_ = nh.advertise<geometry_msgs::TwistStamped>(
-      "/collision_free_control", 1);
+  collision_free_control_pub_ =
+      nh.advertise<geometry_msgs::TwistStamped>("/collision_free_control", 1);
   cloud_before_pub_ =
       nh.advertise<sensor_msgs::PointCloud2>("cloud_before_imu", 1);
   cloud_after_pub_ =
@@ -65,7 +69,8 @@ void CANodelet::onInit()
   cloud_obstacle_pub_ =
       nh.advertise<sensor_msgs::PointCloud2>("cloud_obstacle", 1);
 
-  no_input_timer_ = nh.createTimer(ros::Rate(5), &CANodelet::timerCallback, this);
+  no_input_timer_ =
+      nh.createTimer(ros::Rate(5), &CANodelet::timerCallback, this);
 }
 
 void CANodelet::transformPointcloud(
@@ -282,25 +287,36 @@ void CANodelet::setpointCallback(
 {
   no_input_timer_.stop();
 
+  saved_pose_ = current_pose_;
+
+  avoidCollision(*msg);
+
+  no_input_timer_.start();
+}
+
+void CANodelet::avoidCollision(const geometry_msgs::PoseStamped& setpoint)
+{
   geometry_msgs::TwistStamped collision_free_control;
 
   // Transform to robot frame
-  geometry_msgs::TransformStamped transform;
   try
   {
-    transform = tf_buffer_.lookupTransform(robot_frame_, msg->header.frame_id,
-                                           ros::Time(0));
+    geometry_msgs::TransformStamped transform = tf_buffer_.lookupTransform(
+        robot_frame_, setpoint.header.frame_id, ros::Time(0));
 
-    geometry_msgs::PoseStamped setpoint;
-    tf2::doTransform(*msg, setpoint, transform);
+    geometry_msgs::PoseStamped setpoint_transformed;
+    tf2::doTransform(setpoint, setpoint_transformed, transform);
 
-    collision_free_control.header = setpoint.header;
-    collision_free_control.twist.linear.x = setpoint.pose.position.x;
-    collision_free_control.twist.linear.y = setpoint.pose.position.y;
-    collision_free_control.twist.linear.z = setpoint.pose.position.z;
+    collision_free_control.header = setpoint_transformed.header;
+    collision_free_control.twist.linear.x =
+        setpoint_transformed.pose.position.x;
+    collision_free_control.twist.linear.y =
+        setpoint_transformed.pose.position.y;
+    collision_free_control.twist.linear.z =
+        setpoint_transformed.pose.position.z;
 
     collision_free_control.twist.angular.z =
-        tf2::getYaw(setpoint.pose.orientation);
+        tf2::getYaw(setpoint_transformed.pose.orientation);
   }
   catch (tf2::TransformException& ex)
   {
@@ -338,12 +354,15 @@ void CANodelet::setpointCallback(
 
   // Publish the collision free control
   collision_free_control_pub_.publish(collision_free_control);
-
-  no_input_timer_.start();
 }
 
 void CANodelet::timerCallback(const ros::TimerEvent& event)
 {
+  saved_pose_.header.stamp = ros::Time::now();
+
+  avoidCollision(saved_pose_);
+
+  /*
   geometry_msgs::TwistStamped collision_free_control;
   collision_free_control.header.stamp = ros::Time::now();
   collision_free_control.header.frame_id = robot_frame_;
@@ -352,7 +371,8 @@ void CANodelet::timerCallback(const ros::TimerEvent& event)
 
   obstacles = getEgeDynamicSpace(obstacles);
 
-  NoInput::avoidCollision(&collision_free_control, obstacles, radius_, min_distance_hold_);
+  NoInput::avoidCollision(&collision_free_control, obstacles, radius_,
+                          min_distance_hold_);
 
   double magnitude =
       std::min(std::sqrt(std::pow(collision_free_control.twist.linear.x, 2) +
@@ -362,6 +382,7 @@ void CANodelet::timerCallback(const ros::TimerEvent& event)
   adjustVelocity(obstacles, &collision_free_control, magnitude);
 
   collision_free_control_pub_.publish(collision_free_control);
+  */
 }
 
 std::vector<Point>
@@ -439,9 +460,9 @@ void CANodelet::adjustVelocity(const std::vector<Point>& obstacles,
   double direction = Point::getDirectionDegrees(goal);
 
   double updated_magnitude =
-      max_xy_vel_ *
-      std::min(closest_obstacle_distance / (h_m_ * (radius_ + security_distance_)),
-               magnitude);
+      max_xy_vel_ * std::min(closest_obstacle_distance /
+                                 (h_m_ * (radius_ + security_distance_)),
+                             magnitude);
 
   Point updated_goal =
       Point::getPointFromVectorDegrees(direction, updated_magnitude);
@@ -456,6 +477,11 @@ void CANodelet::odometryCallback(const nav_msgs::Odometry::ConstPtr& msg)
   current_y_vel_ = msg->twist.twist.linear.x; // This should be x?
 }
 
+void CANodelet::poseCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
+{
+  current_pose_ = *msg;
+}
+
 void CANodelet::imuCallback(const sensor_msgs::Imu::ConstPtr& imu)
 {
   imu_ = *imu;
@@ -463,7 +489,7 @@ void CANodelet::imuCallback(const sensor_msgs::Imu::ConstPtr& imu)
   double yaw, pitch, roll;
   tf2::getEulerYPR(imu_.orientation, yaw, pitch, roll);
 
-  //ROS_FATAL("%f, %f, %f", yaw, pitch, roll);
+  // ROS_FATAL("%f, %f, %f", yaw, pitch, roll);
 }
 
 void CANodelet::configCallback(CollisionAvoidanceConfig& config, uint32_t level)

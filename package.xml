@@ -60,14 +60,28 @@
   <depend>pcl_ros</depend>
   <depend>roscpp</depend>
   <depend>rospy</depend>
+  <depend>rviz</depend>
   <depend>std_msgs</depend>
   <depend>tf2</depend>
   <depend>tf2_msgs</depend>
   <depend>tf2_ros</depend>
   <depend>tf2_sensor_msgs</depend>
 
+
+  <build_depend>qtbase5-dev</build_depend>
+  <build_export_depend>qtbase5-dev</build_export_depend>
+
+  <build_export_depend>libqt5-core</build_export_depend>
+  <exec_depend>libqt5-core</exec_depend>
+  <build_export_depend>libqt5-gui</build_export_depend>
+  <exec_depend>libqt5-gui</exec_depend>
+  <build_export_depend>libqt5-widgets</build_export_depend>
+  <exec_depend>libqt5-widgets</exec_depend>
+
+
   <!-- The export tag contains other, unspecified, tags -->
   <export>
+    <rviz plugin="${prefix}/collision_avoidance_rviz.xml"/>
     <nodelet plugin="${prefix}/collision_avoidance_nodelet.xml" />
     <nodelet plugin="${prefix}/laserscan_to_pointcloud_nodelet.xml" />
   

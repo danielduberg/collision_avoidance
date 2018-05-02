@@ -43,6 +43,9 @@ private:
   // Current pose
   geometry_msgs::PoseStamped current_pose_;
 
+  // Pose when last setpoint recieved
+  geometry_msgs::PoseStamped saved_pose_;
+
   // Current imu;
   sensor_msgs::Imu imu_;
 
@@ -89,6 +92,7 @@ private:
   std::vector<ros::Subscriber> obstacle_sub_;
   ros::Subscriber setpoint_sub_;
   ros::Subscriber odometry_sub_;
+  ros::Subscriber pose_sub_;
   ros::Subscriber imu_sub_;
 
   // Publishers
@@ -100,7 +104,7 @@ private:
   ros::Timer no_input_timer_;
 
   // Dynamic reconfigure
-  dynamic_reconfigure::Server<collision_avoidance::CollisionAvoidanceConfig>
+  dynamic_reconfigure::Server<collision_avoidance::CollisionAvoidanceConfig>*
       cs_;
   dynamic_reconfigure::Server<
       collision_avoidance::CollisionAvoidanceConfig>::CallbackType f_;
@@ -128,6 +132,8 @@ private:
 
   void setpointCallback(const geometry_msgs::PoseStamped::ConstPtr& msg);
 
+  void avoidCollision(const geometry_msgs::PoseStamped& setpoint);
+
   void timerCallback(const ros::TimerEvent& event);
 
   std::vector<Point> getEgeDynamicSpace(const std::vector<Point>& obstacles_in);
@@ -137,6 +143,8 @@ private:
                       const double magnitude);
 
   void odometryCallback(const nav_msgs::Odometry::ConstPtr& msg);
+
+  void poseCallback(const geometry_msgs::PoseStamped::ConstPtr& msg);
 
   void imuCallback(const sensor_msgs::Imu::ConstPtr& imu);
 
