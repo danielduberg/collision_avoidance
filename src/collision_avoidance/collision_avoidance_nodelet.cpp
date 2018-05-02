@@ -354,7 +354,12 @@ void CANodelet::timerCallback(const ros::TimerEvent& event)
 
   NoInput::avoidCollision(&collision_free_control, obstacles, radius_, min_distance_hold_);
 
-  //adjustVelocity(obstacles, &collision_free_control, 1.0);
+  double magnitude =
+      std::min(std::sqrt(std::pow(collision_free_control.twist.linear.x, 2) +
+                         std::pow(collision_free_control.twist.linear.y, 2)),
+               1.0);
+
+  adjustVelocity(obstacles, &collision_free_control, magnitude);
 
   collision_free_control_pub_.publish(collision_free_control);
 }
@@ -485,5 +490,9 @@ void CANodelet::configCallback(CollisionAvoidanceConfig& config, uint32_t level)
   max_xy_vel_ = config.max_xy_vel;
   max_z_vel_ = config.max_z_vel;
   max_yaw_rate_ = config.max_yaw_rate * M_PI / 180.0;
+
+  min_xy_vel_ = config.min_xy_vel;
+  min_z_vel_ = config.min_z_vel;
+  min_yaw_rate_ = config.min_yaw_rate * M_PI / 180.0;
 }
 }

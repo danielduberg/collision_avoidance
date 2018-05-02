@@ -82,7 +82,9 @@ bool ORM::avoidCollision(
     controller->twist.linear.x = 0;
     controller->twist.linear.y = 0;
 
-    // no_input_.avoidCollision(controller, obstacles);
+    std::cout << "Angle diff too large! " << ros::Time::now() << std::endl;
+
+    NoInput::avoidCollision(controller, obstacles, radius, min_distance_hold);
     return false;
   }
 

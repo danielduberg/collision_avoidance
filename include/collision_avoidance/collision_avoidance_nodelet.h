@@ -64,6 +64,11 @@ private:
   double max_z_vel_;
   double max_yaw_rate_;
 
+  // Minimum velocities
+  double min_xy_vel_;
+  double min_z_vel_;
+  double min_yaw_rate_;
+
   // Tele-op
   double min_change_in_direction_;
   double max_change_in_direction_;
