@@ -29,7 +29,8 @@ void CANodelet::onInit()
 
   // Set up dynamic reconfigure server
   f_ = boost::bind(&CANodelet::configCallback, this, _1, _2);
-  cs_ = new dynamic_reconfigure::Server<collision_avoidance::CollisionAvoidanceConfig>(nh_priv);
+  cs_ = new dynamic_reconfigure::Server<
+      collision_avoidance::CollisionAvoidanceConfig>(nh_priv);
   cs_->setCallback(f_);
 
   tf_listener_ = new tf2_ros::TransformListener(tf_buffer_);
