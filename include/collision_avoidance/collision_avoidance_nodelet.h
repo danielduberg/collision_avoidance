@@ -45,6 +45,7 @@ private:
 
   // Pose when last setpoint recieved
   geometry_msgs::PoseStamped saved_pose_;
+  geometry_msgs::PoseStamped last_setpoint_;
 
   // Current imu;
   sensor_msgs::Imu imu_;
@@ -84,6 +85,7 @@ private:
 
   // No input
   double min_distance_hold_;
+  double closest_distance_;
 
   // Emperically measured constant for speed reduction
   double h_m_;
@@ -94,6 +96,7 @@ private:
   ros::Subscriber odometry_sub_;
   ros::Subscriber pose_sub_;
   ros::Subscriber imu_sub_;
+  ros::Subscriber cancel_sub_;
 
   // Publishers
   ros::Publisher collision_free_control_pub_;
@@ -147,6 +150,8 @@ private:
   void poseCallback(const geometry_msgs::PoseStamped::ConstPtr& msg);
 
   void imuCallback(const sensor_msgs::Imu::ConstPtr& imu);
+
+  void cancelCallback(const std_msgs::Header::ConstPtr& msg);
 
   void configCallback(collision_avoidance::CollisionAvoidanceConfig& config,
                       uint32_t level);

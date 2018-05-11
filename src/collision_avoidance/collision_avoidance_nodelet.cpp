@@ -52,7 +52,7 @@ void CANodelet::onInit()
   }
 
   setpoint_sub_ =
-      nh.subscribe("/setpoint", 1, &CANodelet::setpointCallback, this);
+      nh.subscribe("/setpoint", 5, &CANodelet::setpointCallback, this);
   odometry_sub_ = nh.subscribe<nav_msgs::Odometry>(
       "/mavros/local_position/odom", 1, &CANodelet::odometryCallback, this);
   // Change this to use odom instead?
@@ -60,6 +60,8 @@ void CANodelet::onInit()
       "/mavros/local_position/pose", 1, &CANodelet::poseCallback, this);
   imu_sub_ = nh.subscribe<sensor_msgs::Imu>("/mavros/imu/data", 1,
                                             &CANodelet::imuCallback, this);
+
+  cancel_sub_ = nh.subscribe("setpoint/cancel", 5, &CANodelet::cancelCallback, this);
 
   collision_free_control_pub_ =
       nh.advertise<geometry_msgs::TwistStamped>("/collision_free_control", 1);
@@ -71,7 +73,7 @@ void CANodelet::onInit()
       nh.advertise<sensor_msgs::PointCloud2>("cloud_obstacle", 1);
 
   no_input_timer_ =
-      nh.createTimer(ros::Rate(5), &CANodelet::timerCallback, this);
+      nh.createTimer(ros::Rate(20), &CANodelet::timerCallback, this, false, false);
 }
 
 void CANodelet::transformPointcloud(
@@ -286,9 +288,11 @@ std::vector<Point> CANodelet::getPolarHistogram(
 void CANodelet::setpointCallback(
     const geometry_msgs::PoseStamped::ConstPtr& msg)
 {
-  no_input_timer_.stop();
+  //no_input_timer_.stop();
 
   saved_pose_ = current_pose_;
+
+  last_setpoint_ = *msg;
 
   avoidCollision(*msg);
 
@@ -346,7 +350,7 @@ void CANodelet::avoidCollision(const geometry_msgs::PoseStamped& setpoint)
   obstacles = getEgeDynamicSpace(obstacles);
 
   // First pass
-  ORM::avoidCollision(&collision_free_control, magnitude, obstacles, radius_,
+  ORM::avoidCollision(&collision_free_control, magnitude, obstacles, radius_ + closest_distance_,
                       security_distance_, epsilon_, min_distance_hold_,
                       min_change_in_direction_, max_change_in_direction_,
                       min_opposite_direction_, max_opposite_direction_);
@@ -359,9 +363,9 @@ void CANodelet::avoidCollision(const geometry_msgs::PoseStamped& setpoint)
 
 void CANodelet::timerCallback(const ros::TimerEvent& event)
 {
-  saved_pose_.header.stamp = ros::Time::now();
+  last_setpoint_.header.stamp = ros::Time::now();
 
-  avoidCollision(saved_pose_);
+  avoidCollision(last_setpoint_);
 
   /*
   geometry_msgs::TwistStamped collision_free_control;
@@ -493,6 +497,11 @@ void CANodelet::imuCallback(const sensor_msgs::Imu::ConstPtr& imu)
   // ROS_FATAL("%f, %f, %f", yaw, pitch, roll);
 }
 
+void CANodelet::cancelCallback(const std_msgs::Header::ConstPtr &msg)
+{
+  last_setpoint_ = current_pose_;
+}
+
 void CANodelet::configCallback(CollisionAvoidanceConfig& config, uint32_t level)
 {
   robot_frame_ = config.robot_frame;
@@ -503,6 +512,7 @@ void CANodelet::configCallback(CollisionAvoidanceConfig& config, uint32_t level)
   epsilon_ = config.epsilon;
 
   min_distance_hold_ = config.min_distance_hold;
+  closest_distance_ = config.closest_distance;
   h_m_ = config.h_m;
 
   min_change_in_direction_ = config.min_change_in_direction;
