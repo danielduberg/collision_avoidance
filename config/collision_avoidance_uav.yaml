@@ -1,15 +1,12 @@
-radius: 0.225
-security_distance: 0.41
+radius: 0.2
+security_distance: 0.05
 epsilon: 0.1
 
 min_change_in_direction: 0.0
-max_change_in_direction: 0.0
+max_change_in_direction: 25.0
 
 min_opposite_direction: 0.0
 max_opposite_direction: 10.0
-
-ab: 3.0
-T: 0.3
 
 min_distance_hold: 0.41
 
@@ -18,4 +15,4 @@ max_data_age: 1.0
 polar_size: 360
 
 
-obstacle_topics: ["/cloud"]
+obstacle_topics: ["/camera/depth/points"]

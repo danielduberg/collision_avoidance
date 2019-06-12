@@ -5,15 +5,15 @@
 
   <!-- Pass in collision_avoidance_config_file:=/path/to/config.yaml to change options. -->
   <arg name="collision_avoidance_config_file"
-     default="$(find collision_avoidance)/config/collision_avoidance_simulation.yaml" />
+     default="$(find collision_avoidance)/config/collision_avoidance_uav.yaml" />
 
-  <node pkg="nodelet" type="nodelet" name="collision_avoidance_nodelet" args="load collision_avoidance/CA collision_avoidance_manager" output="screen">
+  <node pkg="nodelet" type="nodelet" name="collision_avoidance_nodelet" args="load collision_avoidance/CollisionAvoidanceNodelet collision_avoidance_manager" output="screen">
       <rosparam file="$(arg collision_avoidance_config_file)" command="load" />
   </node>
 
-  <node pkg="nodelet" type="nodelet" name="laserscan_to_pointcloud_nodelet" args="load laserscan_to_pointcloud/LTP collision_avoidance_manager" output="screen">
+  <!-- <node pkg="nodelet" type="nodelet" name="laserscan_to_pointcloud_nodelet" args="load laserscan_to_pointcloud/LTP collision_avoidance_manager" output="screen">
     <param name="scan_topic" type="str" value="scan" />
     <param name="cloud_topic" type="str" value="cloud" />
-  </node>
+  </node> -->
 
 </launch>

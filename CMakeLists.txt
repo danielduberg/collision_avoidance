@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8.3)
 project(collision_avoidance)
 
 ## Add support for C++11, supported in ROS Kinetic and newer
-add_definitions(-std=c++11)
+add_definitions(-std=c++17)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -155,16 +155,17 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
 )
 
-## Declare a C++ library
-add_library(${PROJECT_NAME}_nodelet
-  src/${PROJECT_NAME}/collision_avoidance_nodelet.cpp
+set(COLLISION_AVOIDANCE_SOURCE_FILES
+  src/${PROJECT_NAME}/collision_avoidance.cpp
   src/${PROJECT_NAME}/obstacle_restriction_method.cpp
   src/${PROJECT_NAME}/no_input.cpp
   src/${PROJECT_NAME}/point.cpp
 )
 
-add_library(laserscan_to_pointcloud_nodelet
-  src/laserscan_to_pointcloud/laserscan_to_pointcloud.cpp
+## Declare a C++ library
+add_library(${PROJECT_NAME}_nodelet
+  src/collision_avoidance_nodelet.cpp
+  ${COLLISION_AVOIDANCE_SOURCE_FILES}
 )
 
 ## Add cmake target dependencies of the library
@@ -172,10 +173,16 @@ add_library(laserscan_to_pointcloud_nodelet
 ## either from message generation or dynamic reconfigure
 add_dependencies(${PROJECT_NAME}_nodelet ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_gencfg)
 
+## Specify libraries to link a library or executable target against
+target_link_libraries(${PROJECT_NAME}_nodelet
+  ${catkin_LIBRARIES}
+)
+
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
-# add_executable(${PROJECT_NAME}_node src/collision_avoidance_node.cpp)
+add_executable(${PROJECT_NAME}_node src/collision_avoidance_node.cpp 
+${COLLISION_AVOIDANCE_SOURCE_FILES})
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -185,13 +192,22 @@ add_dependencies(${PROJECT_NAME}_nodelet ${${PROJECT_NAME}_EXPORTED_TARGETS} ${c
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
-# add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_gencfg)
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(${PROJECT_NAME}_nodelet laserscan_to_pointcloud_nodelet
+target_link_libraries(${PROJECT_NAME}_node
   ${catkin_LIBRARIES}
 )
 
+## Declare a C++ library
+add_library(laserscan_to_pointcloud_nodelet
+  src/laserscan_to_pointcloud/laserscan_to_pointcloud.cpp
+)
+
+## Specify libraries to link a library or executable target against
+target_link_libraries(laserscan_to_pointcloud_nodelet
+  ${catkin_LIBRARIES}
+)
 
 ## Here we specify the list of source files.
 ## The generated MOC files are included automatically as headers.

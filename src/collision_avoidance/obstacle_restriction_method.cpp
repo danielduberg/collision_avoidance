@@ -22,7 +22,7 @@ double radiansToDegrees(double r)
 
 ORM::ORM() {}
 
-bool ORM::avoidCollision(
+bool ORM::avoidCollision(ros::Publisher& pub_,
     geometry_msgs::TwistStamped* controller, const double magnitude,
     const std::vector<Point>& obstacles, double radius,
     double security_distance, double epsilon, double min_distance_hold,
@@ -43,7 +43,7 @@ bool ORM::avoidCollision(
 
   // A. The Subgoal Selector
   goal =
-      subgoalSelector(goal, magnitude, obstacles, radius, security_distance,
+      subgoalSelector(pub_, goal, magnitude, obstacles, radius, security_distance,
                       epsilon, min_change_in_direction, max_change_in_direction,
                       min_opposite_direction, max_opposite_direction);
 
@@ -93,7 +93,7 @@ bool ORM::avoidCollision(
 
 Point ORM::initGoal(double x, double y) { return Point(x, y); }
 
-bool ORM::isSubgoal(int index, int previous_index, Point* subgoal,
+bool ORM::isSubgoal(ros::Publisher& pub_, int index, int previous_index, Point* subgoal,
                     const std::vector<Point>& L, double radius,
                     double security_distance, double epsilon)
 {
@@ -120,7 +120,7 @@ bool ORM::isSubgoal(int index, int previous_index, Point* subgoal,
 
     Point temp_subgoal = Point::getPointFromVectorDegrees(direction, distance);
 
-    if (isClearPath(temp_subgoal, L, radius, security_distance))
+    if (isClearPath(pub_, temp_subgoal, L, radius, security_distance))
     {
       *subgoal = temp_subgoal;
       return true;
@@ -137,7 +137,7 @@ bool ORM::isSubgoal(int index, int previous_index, Point* subgoal,
 
     Point temp_subgoal = Point::getPointFromVectorDegrees(direction, distance);
 
-    if (isClearPath(temp_subgoal, L, radius, security_distance))
+    if (isClearPath(pub_, temp_subgoal, L, radius, security_distance))
     {
       *subgoal = temp_subgoal;
       return true;
@@ -151,7 +151,7 @@ bool ORM::isSubgoal(int index, int previous_index, Point* subgoal,
     // Found subgoal between two obstacles
     Point temp_subgoal = Point::getMidpoint(L[index], L[previous_index]);
 
-    if (isClearPath(temp_subgoal, L, radius, security_distance))
+    if (isClearPath(pub_, temp_subgoal, L, radius, security_distance))
     {
       *subgoal = temp_subgoal;
       return true;
@@ -162,7 +162,7 @@ bool ORM::isSubgoal(int index, int previous_index, Point* subgoal,
   return false;
 }
 
-Point ORM::subgoalSelector(const Point& goal, double magnitude,
+Point ORM::subgoalSelector(ros::Publisher& pub_, const Point& goal, double magnitude,
                            const std::vector<Point>& L, double radius,
                            double security_distance, double epsilon,
                            double min_change_in_direction,
@@ -170,7 +170,7 @@ Point ORM::subgoalSelector(const Point& goal, double magnitude,
                            double min_opposite_direction,
                            double max_opposite_direction)
 {
-  if (isClearPath(goal, L, radius, security_distance))
+  if (isClearPath(pub_, goal, L, radius, security_distance))
   {
     // We can go where we want
     return goal;
@@ -218,7 +218,7 @@ Point ORM::subgoalSelector(const Point& goal, double magnitude,
       int right_index = mod(wanted_index + i, L.size());
       int right_previous_index = mod(wanted_index + (i - 1), L.size());
 
-      if (isSubgoal(right_index, right_previous_index, &subgoal, L, radius,
+      if (isSubgoal(pub_, right_index, right_previous_index, &subgoal, L, radius,
                     security_distance, epsilon))
       {
         subgoal_i = i;
@@ -231,7 +231,7 @@ Point ORM::subgoalSelector(const Point& goal, double magnitude,
       int left_index = mod(wanted_index - i, L.size());
       int left_previous_index = mod(wanted_index - (i - 1), L.size());
 
-      if (isSubgoal(left_index, left_previous_index, &subgoal, L, radius,
+      if (isSubgoal(pub_, left_index, left_previous_index, &subgoal, L, radius,
                     security_distance, epsilon))
       {
         subgoal_i = i;
@@ -250,14 +250,14 @@ Point ORM::subgoalSelector(const Point& goal, double magnitude,
   return goal;
 }
 
-bool ORM::isClearPath(const Point& goal, const std::vector<Point>& L,
+bool ORM::isClearPath(ros::Publisher& pub_, const Point& goal, const std::vector<Point>& L,
                       double radius, double security_distance)
 {
   // A contains points on the left side of goal
   // B contains points on the right side of goal
   std::vector<Point> A, B;
 
-  getPointsOfInterest(goal, L, &A, &B, radius, security_distance, 90);
+  getPointsOfInterest(goal, L, &A, &B, radius, security_distance, 30);
 
   // Corners of the rectangle (tunnel)
   std::vector<Point> rectangle;
@@ -271,7 +271,6 @@ bool ORM::isClearPath(const Point& goal, const std::vector<Point>& L,
   A = getPointsInPolygon(A, rectangle); // getPointsInRectangle(A, a, b, c, d);
   B = getPointsInPolygon(B, rectangle); // getPointsInRectangle(B, a, b, c, d);
 
-  /*
   pcl::PointCloud<pcl::PointXYZI> cloud;
   cloud.header.frame_id = "base_link";
   pcl_conversions::toPCL(ros::Time::now(), cloud.header.stamp);
@@ -302,7 +301,6 @@ bool ORM::isClearPath(const Point& goal, const std::vector<Point>& L,
       cloud.points.push_back(point);
   }
   pub_.publish(cloud);
-  */
 
   // Check if path is clear
   for (size_t i = 0; i < A.size(); ++i)

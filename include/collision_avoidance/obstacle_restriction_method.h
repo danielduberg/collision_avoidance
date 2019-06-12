@@ -19,7 +19,7 @@ private:
 
 public:
   static bool
-  avoidCollision(geometry_msgs::TwistStamped* controller,
+  avoidCollision(ros::Publisher& pub_, geometry_msgs::TwistStamped* controller,
                  const double magnitude, const std::vector<Point>& obstacles,
                  double radius, double security_distance, double epsilon,
                  double min_distance_hold, double min_change_in_direction,
@@ -29,11 +29,11 @@ public:
 private:
   static Point initGoal(double x, double y);
 
-  static bool isSubgoal(int index, int previous_index, Point* subgoal,
+  static bool isSubgoal(ros::Publisher& pub_, int index, int previous_index, Point* subgoal,
                         const std::vector<Point>& L, double radius,
                         double security_distance, double epsilon);
 
-  static Point subgoalSelector(const Point& goal, double magnitude,
+  static Point subgoalSelector(ros::Publisher& pub_, const Point& goal, double magnitude,
                                const std::vector<Point>& L, double radius,
                                double security_distance, double epsilon,
                                double min_change_in_direction,
@@ -68,7 +68,7 @@ private:
   static void getRectangle(const Point& goal, double radius,
                            std::vector<Point>* verticies);
 
-  static bool isClearPath(const Point& goal, const std::vector<Point>& L,
+  static bool isClearPath(ros::Publisher& pub_, const Point& goal, const std::vector<Point>& L,
                           double radius, double security_distance);
 
   static double getMidDirection(double d1, double d2);
