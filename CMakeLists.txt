@@ -8,14 +8,16 @@ add_definitions(-std=c++17)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
+  actionlib
+  actionlib_msgs
   dynamic_reconfigure
+  message_generation
   nav_msgs
   nodelet
   pcl_conversions
   pcl_ros
   roscpp
   rospy
-  rviz
   std_msgs
   tf2
   tf2_msgs
@@ -23,30 +25,6 @@ find_package(catkin REQUIRED COMPONENTS
   tf2_sensor_msgs
 )
 
-set(ROS_BUILD_TYPE RelWithDebInfo)
-
-link_directories(${catkin_LIBRARY_DIRS})
-
-## This setting causes Qt's "MOC" generation to happen automatically.
-set(CMAKE_AUTOMOC ON)
-
-## This plugin includes Qt widgets, so we must include Qt.
-## We'll use the version that rviz used so they are compatible.
-if(rviz_QT_VERSION VERSION_LESS "5")
-  message(STATUS "Using Qt4 based on the rviz_QT_VERSION: ${rviz_QT_VERSION}")
-  find_package(Qt4 ${rviz_QT_VERSION} EXACT REQUIRED QtCore QtGui)
-  ## pull in all required include dirs, define QT_LIBRARIES, etc.
-  include(${QT_USE_FILE})
-else()
-  message(STATUS "Using Qt5 based on the rviz_QT_VERSION: ${rviz_QT_VERSION}")
-  find_package(Qt5 ${rviz_QT_VERSION} EXACT REQUIRED Core Widgets)
-  ## make target_link_libraries(${QT_LIBRARIES}) pull in all required dependencies
-  set(QT_LIBRARIES Qt5::Widgets)
-endif()
-
-## I prefer the Qt signals and slots to avoid defining "emit", "slots",
-## etc because they can conflict with boost signals, so define QT_NO_KEYWORDS here.
-add_definitions(-DQT_NO_KEYWORDS)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -96,17 +74,16 @@ add_definitions(-DQT_NO_KEYWORDS)
 # )
 
 ## Generate actions in the 'action' folder
-# add_action_files(
-#   FILES
-#   Action1.action
-#   Action2.action
-# )
+add_action_files(
+  FILES
+  PathControl.action
+)
 
 ## Generate added messages and services with any dependencies listed here
-# generate_messages(
-#   DEPENDENCIES
-#   safe_flight_msgs#   std_msgs
-# )
+generate_messages(
+  DEPENDENCIES
+  nav_msgs
+)
 
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
@@ -209,21 +186,6 @@ target_link_libraries(laserscan_to_pointcloud_nodelet
   ${catkin_LIBRARIES}
 )
 
-## Here we specify the list of source files.
-## The generated MOC files are included automatically as headers.
-set(RVIZ_SOURCE_FILES
-  src/rviz/configure.cpp
-)
-
-set(RVIZ_HEADER_FILES
-  include/${PROJECT_NAME}/configure.h
-)
-
-## Declare a C++ library
-add_library(${PROJECT_NAME}_rviz ${RVIZ_SOURCE_FILES} ${RVIZ_HEADER_FILES})
-
-target_link_libraries(${PROJECT_NAME}_rviz ${QT_LIBRARIES} ${catkin_LIBRARIES})
-
 #############
 ## Install ##
 #############
@@ -239,7 +201,7 @@ target_link_libraries(${PROJECT_NAME}_rviz ${QT_LIBRARIES} ${catkin_LIBRARIES})
 # )
 
 ## Mark executables and/or libraries for installation
-install(TARGETS ${PROJECT_NAME}_nodelet laserscan_to_pointcloud_nodelet ${PROJECT_NAME}_rviz
+install(TARGETS ${PROJECT_NAME}_nodelet laserscan_to_pointcloud_nodelet
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
@@ -256,7 +218,6 @@ install(DIRECTORY include/${PROJECT_NAME}/
 install(FILES
   collision_avoidance_nodelet.xml
   laserscan_to_pointcloud_nodelet.xml
-  collision_avoidance_rviz.xml
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )
 

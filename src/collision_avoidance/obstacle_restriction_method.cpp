@@ -1,12 +1,15 @@
-#include <collision_avoidance/obstacle_restriction_method.h>
 #include <collision_avoidance/no_input.h>
+#include <collision_avoidance/obstacle_restriction_method.h>
 
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl_ros/point_cloud.h>
 
 namespace collision_avoidance
 {
-int mod(int a, int b) { return ((a %= b) < 0) ? a + b : a; }
+int mod(int a, int b)
+{
+  return ((a %= b) < 0) ? a + b : a;
+}
 
 double radiansToDegrees(double r)
 {
@@ -20,55 +23,85 @@ double radiansToDegrees(double r)
   return r;
 }
 
-ORM::ORM() {}
-
-bool ORM::avoidCollision(ros::Publisher& pub_,
-    geometry_msgs::TwistStamped* controller, const double magnitude,
-    const std::vector<Point>& obstacles, double radius,
-    double security_distance, double epsilon, double min_distance_hold,
-    double min_change_in_direction, double max_change_in_direction,
-    double min_opposite_direction, double max_opposite_direction)
+ORM::ORM(double radius, double security_distance, double epsilon, double max_change_in_direction)
+  : radius_(radius), security_distance_(security_distance), epsilon_(epsilon)
 {
-  geometry_msgs::TwistStamped controller_original = *controller;
+}
 
-  if (controller->twist.linear.x == 0 && controller->twist.linear.y == 0)
+Eigen::Vector2d ORM::avoidCollision(const Eigen::Vector2d& goal, const std::vector<Eigen::Vector2d>& obstacles)
+{
+  Eigen::Vector2d subgoal = subgoalSelector(goal, obstacles);
+
+  return motionComputation(subgoal, obstacles);
+}
+
+Eigen::Vector2d ORM::subgoalSelector(const Eigen::Vector2d& goal, const std::vector<Eigen::Vector2d>& obstacles)
+{
+  // TODO
+  if (isPathClear(goal, obstacles))
+  {
+    // We can go straight towards goal
+    return goal;
+  }
+
+  // We have to find a subgoal
+  for (int i = 1; i < obstacles.size() / 2; ++i)
+  {
+    for (int j : {-1, 1})
+    {
+      int index = j * i;
+
+      
+    }
+  }
+}
+
+Eigen::Vector2d ORM::motionComputation(const Eigen::Vector2d goal, const std::vector<Eigen::Vector2d>& obstacles)
+{
+  // TODO
+}
+
+bool ORM::avoidCollision(ros::Publisher& pub_, geometry_msgs::TwistStamped* control, const double magnitude,
+                         const std::vector<Point>& obstacles, double radius, double security_distance, double epsilon,
+                         double min_distance_hold, double min_change_in_direction, double max_change_in_direction,
+                         double min_opposite_direction, double max_opposite_direction)
+{
+  geometry_msgs::TwistStamped control_original = *control;
+
+  if (control->twist.linear.x == 0 && control->twist.linear.y == 0)
   {
     // Nothing to do!
     // TODO: No input?
-    NoInput::avoidCollision(controller, obstacles, radius, min_distance_hold);
+    NoInput::avoidCollision(control, obstacles, radius, min_distance_hold);
     return true;
   }
 
-  Point goal(controller->twist.linear.x, controller->twist.linear.y);
+  Point goal(control->twist.linear.x, control->twist.linear.y);
 
   // A. The Subgoal Selector
-  goal =
-      subgoalSelector(pub_, goal, magnitude, obstacles, radius, security_distance,
-                      epsilon, min_change_in_direction, max_change_in_direction,
-                      min_opposite_direction, max_opposite_direction);
+  goal = subgoalSelector(pub_, goal, magnitude, obstacles, radius, security_distance, epsilon, min_change_in_direction,
+                         max_change_in_direction, min_opposite_direction, max_opposite_direction);
 
-  controller->twist.linear.x = goal.x_;
-  controller->twist.linear.y = goal.y_;
+  control->twist.linear.x = goal.x_;
+  control->twist.linear.y = goal.y_;
 
   if (goal.x_ == 0 && goal.y_ == 0)
   {
     // Could not find any good command :(
     // TODO: No input?
-    NoInput::avoidCollision(controller, obstacles, radius, min_distance_hold);
+    NoInput::avoidCollision(control, obstacles, radius, min_distance_hold);
     return false;
   }
 
   // B. Motion Computation
   goal = motionComputation(goal, obstacles, radius, security_distance);
 
-  controller->twist.linear.x = goal.x_;
-  controller->twist.linear.y = goal.y_;
+  control->twist.linear.x = goal.x_;
+  control->twist.linear.y = goal.y_;
 
-  Point goal_original(controller_original.twist.linear.x,
-                      controller_original.twist.linear.y);
+  Point goal_original(control_original.twist.linear.x, control_original.twist.linear.y);
 
-  double angular_diff = std::fabs(Point::getDirectionDegrees(goal_original) -
-                                  Point::getDirectionDegrees(goal));
+  double angular_diff = std::fabs(Point::getDirectionDegrees(goal_original) - Point::getDirectionDegrees(goal));
 
   if (angular_diff > 180)
   {
@@ -79,23 +112,25 @@ bool ORM::avoidCollision(ros::Publisher& pub_,
 
   if (angular_diff > max_change_in_direction)
   {
-    controller->twist.linear.x = 0;
-    controller->twist.linear.y = 0;
+    control->twist.linear.x = 0;
+    control->twist.linear.y = 0;
 
     std::cout << "Angle diff too large! " << ros::Time::now() << std::endl;
 
-    NoInput::avoidCollision(controller, obstacles, radius, min_distance_hold);
+    NoInput::avoidCollision(control, obstacles, radius, min_distance_hold);
     return false;
   }
 
   return true;
 }
 
-Point ORM::initGoal(double x, double y) { return Point(x, y); }
+Point ORM::initGoal(double x, double y)
+{
+  return Point(x, y);
+}
 
-bool ORM::isSubgoal(ros::Publisher& pub_, int index, int previous_index, Point* subgoal,
-                    const std::vector<Point>& L, double radius,
-                    double security_distance, double epsilon)
+bool ORM::isSubgoal(ros::Publisher& pub_, int index, int previous_index, Point* subgoal, const std::vector<Point>& L,
+                    double radius, double security_distance, double epsilon)
 {
   if (Point::isnan(L[index]) || Point::isnan(L[previous_index]))
   {
@@ -114,8 +149,7 @@ bool ORM::isSubgoal(ros::Publisher& pub_, int index, int previous_index, Point* 
   if (Point::isinf(L[index]) && Point::isfinite(L[previous_index]))
   {
     // Found subgoal at the edge of an obstacle
-    double direction = getMidDirection(index * degrees_per_index,
-                                       previous_index * degrees_per_index);
+    double direction = getMidDirection(index * degrees_per_index, previous_index * degrees_per_index);
     double distance = Point::getDistance(L[index]) + (radius * 2.0) + epsilon;
 
     Point temp_subgoal = Point::getPointFromVectorDegrees(direction, distance);
@@ -130,10 +164,8 @@ bool ORM::isSubgoal(ros::Publisher& pub_, int index, int previous_index, Point* 
   if (Point::isfinite(L[index]) && Point::isinf(L[previous_index]))
   {
     // Found subgoal at the edge of an obstacle
-    double direction = getMidDirection(index * degrees_per_index,
-                                       previous_index * degrees_per_index);
-    double distance =
-        Point::getDistance(L[previous_index]) + (radius * 2.0) + epsilon;
+    double direction = getMidDirection(index * degrees_per_index, previous_index * degrees_per_index);
+    double distance = Point::getDistance(L[previous_index]) + (radius * 2.0) + epsilon;
 
     Point temp_subgoal = Point::getPointFromVectorDegrees(direction, distance);
 
@@ -162,13 +194,9 @@ bool ORM::isSubgoal(ros::Publisher& pub_, int index, int previous_index, Point* 
   return false;
 }
 
-Point ORM::subgoalSelector(ros::Publisher& pub_, const Point& goal, double magnitude,
-                           const std::vector<Point>& L, double radius,
-                           double security_distance, double epsilon,
-                           double min_change_in_direction,
-                           double max_change_in_direction,
-                           double min_opposite_direction,
-                           double max_opposite_direction)
+Point ORM::subgoalSelector(ros::Publisher& pub_, const Point& goal, double magnitude, const std::vector<Point>& L,
+                           double radius, double security_distance, double epsilon, double min_change_in_direction,
+                           double max_change_in_direction, double min_opposite_direction, double max_opposite_direction)
 {
   if (isClearPath(pub_, goal, L, radius, security_distance))
   {
@@ -181,13 +209,11 @@ Point ORM::subgoalSelector(ros::Publisher& pub_, const Point& goal, double magni
   int wanted_index = Point::getDirectionDegrees(goal) / degrees_per_index;
 
   double change_in_direction =
-      ((max_change_in_direction - min_change_in_direction) * magnitude) +
-      min_change_in_direction; // 180;
+      ((max_change_in_direction - min_change_in_direction) * magnitude) + min_change_in_direction;  // 180;
   double opposite_direction =
-      ((max_opposite_direction - min_opposite_direction) * (1.0 - magnitude)) +
-      min_opposite_direction; // 0;
+      ((max_opposite_direction - min_opposite_direction) * (1.0 - magnitude)) + min_opposite_direction;  // 0;
 
-  //ROS_FATAL("Change: %f, Opposite: %f", change_in_direction,
+  // ROS_FATAL("Change: %f, Opposite: %f", change_in_direction,
   //          opposite_direction);
 
   Point subgoal;
@@ -206,8 +232,7 @@ Point ORM::subgoalSelector(ros::Publisher& pub_, const Point& goal, double magni
       break;
     }
 
-    if (subgoal_i != -1 &&
-        (i - subgoal_i) * degrees_per_index > opposite_direction)
+    if (subgoal_i != -1 && (i - subgoal_i) * degrees_per_index > opposite_direction)
     {
       // Found sub_goal and it is allowed
       return subgoal;
@@ -218,8 +243,7 @@ Point ORM::subgoalSelector(ros::Publisher& pub_, const Point& goal, double magni
       int right_index = mod(wanted_index + i, L.size());
       int right_previous_index = mod(wanted_index + (i - 1), L.size());
 
-      if (isSubgoal(pub_, right_index, right_previous_index, &subgoal, L, radius,
-                    security_distance, epsilon))
+      if (isSubgoal(pub_, right_index, right_previous_index, &subgoal, L, radius, security_distance, epsilon))
       {
         subgoal_i = i;
         found_right_subgoal = true;
@@ -231,8 +255,7 @@ Point ORM::subgoalSelector(ros::Publisher& pub_, const Point& goal, double magni
       int left_index = mod(wanted_index - i, L.size());
       int left_previous_index = mod(wanted_index - (i - 1), L.size());
 
-      if (isSubgoal(pub_, left_index, left_previous_index, &subgoal, L, radius,
-                    security_distance, epsilon))
+      if (isSubgoal(pub_, left_index, left_previous_index, &subgoal, L, radius, security_distance, epsilon))
       {
         subgoal_i = i;
         found_left_subgoal = true;
@@ -250,8 +273,8 @@ Point ORM::subgoalSelector(ros::Publisher& pub_, const Point& goal, double magni
   return goal;
 }
 
-bool ORM::isClearPath(ros::Publisher& pub_, const Point& goal, const std::vector<Point>& L,
-                      double radius, double security_distance)
+bool ORM::isClearPath(ros::Publisher& pub_, const Point& goal, const std::vector<Point>& L, double radius,
+                      double security_distance)
 {
   // A contains points on the left side of goal
   // B contains points on the right side of goal
@@ -268,37 +291,37 @@ bool ORM::isClearPath(ros::Publisher& pub_, const Point& goal, const std::vector
   // getRectangle(goal, 2.0d * radius_, &a, &b, &c, &d);
   getRectangle(goal, 2.0 * radius, &rectangle);
 
-  A = getPointsInPolygon(A, rectangle); // getPointsInRectangle(A, a, b, c, d);
-  B = getPointsInPolygon(B, rectangle); // getPointsInRectangle(B, a, b, c, d);
+  A = getPointsInPolygon(A, rectangle);  // getPointsInRectangle(A, a, b, c, d);
+  B = getPointsInPolygon(B, rectangle);  // getPointsInRectangle(B, a, b, c, d);
 
   pcl::PointCloud<pcl::PointXYZI> cloud;
   cloud.header.frame_id = "base_link";
   pcl_conversions::toPCL(ros::Time::now(), cloud.header.stamp);
   {
-      pcl::PointXYZI point;
-      point.x = goal.x_;
-      point.y = goal.y_;
-      point.z = 0.0;
-      point.intensity = 0.5;
-      cloud.points.push_back(point);
+    pcl::PointXYZI point;
+    point.x = goal.x_;
+    point.y = goal.y_;
+    point.z = 0.0;
+    point.intensity = 0.5;
+    cloud.points.push_back(point);
   }
   for (size_t i = 0; i < A.size(); ++i)
   {
-      pcl::PointXYZI point;
-      point.x = A[i].x_;
-      point.y = A[i].y_;
-      point.z = 0.0;
-      point.intensity = 0.2;
-      cloud.points.push_back(point);
+    pcl::PointXYZI point;
+    point.x = A[i].x_;
+    point.y = A[i].y_;
+    point.z = 0.0;
+    point.intensity = 0.2;
+    cloud.points.push_back(point);
   }
   for (size_t i = 0; i < B.size(); ++i)
   {
-      pcl::PointXYZI point;
-      point.x = B[i].x_;
-      point.y = B[i].y_;
-      point.z = 0.0;
-      point.intensity = 0.65;
-      cloud.points.push_back(point);
+    pcl::PointXYZI point;
+    point.x = B[i].x_;
+    point.y = B[i].y_;
+    point.z = 0.0;
+    point.intensity = 0.65;
+    cloud.points.push_back(point);
   }
   pub_.publish(cloud);
 
@@ -318,8 +341,7 @@ bool ORM::isClearPath(ros::Publisher& pub_, const Point& goal, const std::vector
 }
 
 // Source: http://stackoverflow.com/questions/2825412/draw-a-parallel-line
-void ORM::getRectangle(const Point& goal, double radius,
-                       std::vector<Point>* verticies)
+void ORM::getRectangle(const Point& goal, double radius, std::vector<Point>* verticies)
 {
   /*
   double x1 = 0.0d;
@@ -347,8 +369,7 @@ void ORM::getRectangle(const Point& goal, double radius,
   verticies->push_back(d);
 }
 
-std::vector<Point> ORM::getPointsInPolygon(const std::vector<Point>& L,
-                                           const std::vector<Point>& verticies)
+std::vector<Point> ORM::getPointsInPolygon(const std::vector<Point>& L, const std::vector<Point>& verticies)
 {
   std::vector<Point> Lp;
 
@@ -373,8 +394,7 @@ std::vector<Point> ORM::getPointsInPolygon(const std::vector<Point>& L,
 
 // Source:
 // https://stackoverflow.com/questions/217578/how-can-i-determine-whether-a-2d-point-is-within-a-polygon
-bool ORM::isPointInPolygon(const Point& point,
-                           const std::vector<Point>& verticies)
+bool ORM::isPointInPolygon(const Point& point, const std::vector<Point>& verticies)
 {
   int i;
   int j;
@@ -382,10 +402,9 @@ bool ORM::isPointInPolygon(const Point& point,
   for (i = 0, j = verticies.size() - 1; i < verticies.size(); j = i++)
   {
     if (((verticies[i].y_ > point.y_) != (verticies[j].y_ > point.y_)) &&
-        (point.x_ < (verticies[j].x_ - verticies[i].x_) *
-                            (point.y_ - verticies[i].y_) /
-                            (verticies[j].y_ - verticies[i].y_) +
-                        verticies[i].x_))
+        (point.x_ <
+         (verticies[j].x_ - verticies[i].x_) * (point.y_ - verticies[i].y_) / (verticies[j].y_ - verticies[i].y_) +
+             verticies[i].x_))
     {
       c = !c;
     }
@@ -411,14 +430,12 @@ double ORM::getMidDirection(double d1, double d2)
   return (mid_direction + 180);
 }
 
-Point ORM::motionComputation(const Point& goal, const std::vector<Point>& L,
-                             double radius, double security_distance)
+Point ORM::motionComputation(const Point& goal, const std::vector<Point>& L, double radius, double security_distance)
 {
   std::vector<Point> left;
   std::vector<Point> right;
 
-  getPointsOfInterest(goal, L, &left, &right, 180,
-                      Point::getDistance(goal) + radius);
+  getPointsOfInterest(goal, L, &left, &right, 180, Point::getDistance(goal) + radius);
 
   double goal_direction = Point::getDirectionDegrees(goal);
 
@@ -426,10 +443,8 @@ Point ORM::motionComputation(const Point& goal, const std::vector<Point>& L,
   {
     // ROS_FATAL("Hello");
     // Get left and right bounds
-    double left_bound =
-        getLeftBound(right, goal_direction, radius, security_distance);
-    double right_bound =
-        getRightBound(left, goal_direction, radius, security_distance);
+    double left_bound = getLeftBound(right, goal_direction, radius, security_distance);
+    double right_bound = getRightBound(left, goal_direction, radius, security_distance);
 
     double diff_left = left_bound - goal_direction;
     double diff_right = right_bound - goal_direction;
@@ -444,33 +459,27 @@ Point ORM::motionComputation(const Point& goal, const std::vector<Point>& L,
     }
 
     // TODO: Have to check under 360?!
-    if (diff_left > 180 && diff_left < 360 && diff_right > 0 &&
-        diff_right < 180)
+    if (diff_left > 180 && diff_left < 360 && diff_right > 0 && diff_right < 180)
     {
-      return Point::getPointFromVectorDegrees(goal_direction,
-                                              Point::getDistance(goal));
+      return Point::getPointFromVectorDegrees(goal_direction, Point::getDistance(goal));
     }
     else if (diff_right > 0 && diff_right < 180 && diff_right > diff_left)
     {
-      return Point::getPointFromVectorDegrees(left_bound,
-                                              Point::getDistance(goal));
+      return Point::getPointFromVectorDegrees(left_bound, Point::getDistance(goal));
     }
     else if (diff_left > 180 && diff_left < 360 && diff_right > diff_left)
     {
-      return Point::getPointFromVectorDegrees(right_bound,
-                                              Point::getDistance(goal));
+      return Point::getPointFromVectorDegrees(right_bound, Point::getDistance(goal));
     }
     else
     {
       // ROS_FATAL("Middle");
-      return Point::getPointFromVectorDegrees(
-          getMidDirection(left_bound, right_bound), Point::getDistance(goal));
+      return Point::getPointFromVectorDegrees(getMidDirection(left_bound, right_bound), Point::getDistance(goal));
     }
   }
   else if (right.size() != 0)
   {
-    double left_bound =
-        getLeftBound(right, goal_direction, radius, security_distance);
+    double left_bound = getLeftBound(right, goal_direction, radius, security_distance);
 
     double diff_left = left_bound - goal_direction;
 
@@ -481,19 +490,16 @@ Point ORM::motionComputation(const Point& goal, const std::vector<Point>& L,
 
     if (diff_left > 180 && diff_left < 360)
     {
-      return Point::getPointFromVectorDegrees(goal_direction,
-                                              Point::getDistance(goal));
+      return Point::getPointFromVectorDegrees(goal_direction, Point::getDistance(goal));
     }
     else
     {
-      return Point::getPointFromVectorDegrees(left_bound,
-                                              Point::getDistance(goal));
+      return Point::getPointFromVectorDegrees(left_bound, Point::getDistance(goal));
     }
   }
   else if (left.size() != 0)
   {
-    double right_bound =
-        getRightBound(left, goal_direction, radius, security_distance);
+    double right_bound = getRightBound(left, goal_direction, radius, security_distance);
 
     double diff_right = right_bound - goal_direction;
 
@@ -504,27 +510,22 @@ Point ORM::motionComputation(const Point& goal, const std::vector<Point>& L,
 
     if (diff_right > 0 && diff_right < 180)
     {
-      return Point::getPointFromVectorDegrees(goal_direction,
-                                              Point::getDistance(goal));
+      return Point::getPointFromVectorDegrees(goal_direction, Point::getDistance(goal));
     }
     else
     {
-      return Point::getPointFromVectorDegrees(right_bound,
-                                              Point::getDistance(goal));
+      return Point::getPointFromVectorDegrees(right_bound, Point::getDistance(goal));
     }
   }
   else
   {
-    return Point::getPointFromVectorDegrees(goal_direction,
-                                            Point::getDistance(goal));
+    return Point::getPointFromVectorDegrees(goal_direction, Point::getDistance(goal));
   }
 }
 
 // Merge with findPotentialAB
-void ORM::getPointsOfInterest(const Point& goal, const std::vector<Point>& L,
-                              std::vector<Point>* left,
-                              std::vector<Point>* right, double radius,
-                              double security_distance, double max_angle,
+void ORM::getPointsOfInterest(const Point& goal, const std::vector<Point>& L, std::vector<Point>* left,
+                              std::vector<Point>* right, double radius, double security_distance, double max_angle,
                               double max_distance)
 {
   double degrees_per_index = 360.0 / L.size();
@@ -539,8 +540,7 @@ void ORM::getPointsOfInterest(const Point& goal, const std::vector<Point>& L,
     {
       int current_index = mod(wanted_index + (i * j), L.size());
 
-      if (Point::isinf(L[current_index]) ||
-          Point::getDistance(L[current_index]) > max_distance)
+      if (Point::isinf(L[current_index]) || Point::getDistance(L[current_index]) > max_distance)
       {
         // Too far away to matter
         continue;
@@ -552,8 +552,7 @@ void ORM::getPointsOfInterest(const Point& goal, const std::vector<Point>& L,
         if (Point::isnan(L[current_index]))
         {
           // No reading here
-          right->push_back(Point::getPointFromVectorDegrees(
-              current_index * degrees_per_index, magnitude_nan));
+          right->push_back(Point::getPointFromVectorDegrees(current_index * degrees_per_index, magnitude_nan));
         }
         else
         {
@@ -566,8 +565,7 @@ void ORM::getPointsOfInterest(const Point& goal, const std::vector<Point>& L,
         if (Point::isnan(L[current_index]))
         {
           // No reading here
-          left->push_back(Point::getPointFromVectorDegrees(
-              current_index * degrees_per_index, magnitude_nan));
+          left->push_back(Point::getPointFromVectorDegrees(current_index * degrees_per_index, magnitude_nan));
         }
         else
         {
@@ -578,8 +576,7 @@ void ORM::getPointsOfInterest(const Point& goal, const std::vector<Point>& L,
   }
 }
 
-double ORM::getLeftBound(const std::vector<Point>& L, double goal_direction,
-                         double radius, double security_distance)
+double ORM::getLeftBound(const std::vector<Point>& L, double goal_direction, double radius, double security_distance)
 {
   double bound;
   bool first_bound = true;
@@ -589,14 +586,12 @@ double ORM::getLeftBound(const std::vector<Point>& L, double goal_direction,
     double obstacle_direction = Point::getDirectionDegrees(L[i]);
     double obstacle_distance = Point::getDistance(L[i]);
 
-    double alpha = radiansToDegrees(
-        std::abs(std::atan((radius + security_distance) / obstacle_distance)));
+    double alpha = radiansToDegrees(std::abs(std::atan((radius + security_distance) / obstacle_distance)));
 
     double beta = 0;
     if (obstacle_distance <= radius + security_distance)
     {
-      beta = (180.0 - alpha) *
-             (1 - ((obstacle_distance - radius) / security_distance));
+      beta = (180.0 - alpha) * (1 - ((obstacle_distance - radius) / security_distance));
     }
 
     double temp_bound = obstacle_direction + (alpha + beta);
@@ -643,8 +638,7 @@ double ORM::getLeftBound(const std::vector<Point>& L, double goal_direction,
   return bound;
 }
 
-double ORM::getRightBound(const std::vector<Point>& L, double goal_direction,
-                          double radius, double security_distance)
+double ORM::getRightBound(const std::vector<Point>& L, double goal_direction, double radius, double security_distance)
 {
   double bound;
   bool first_bound = true;
@@ -654,14 +648,12 @@ double ORM::getRightBound(const std::vector<Point>& L, double goal_direction,
     double obstacle_direction = Point::getDirectionDegrees(L[i]);
     double obstacle_distance = Point::getDistance(L[i]);
 
-    double alpha = radiansToDegrees(
-        std::abs(std::atan((radius + security_distance) / obstacle_distance)));
+    double alpha = radiansToDegrees(std::abs(std::atan((radius + security_distance) / obstacle_distance)));
 
     double beta = 0;
     if (obstacle_distance <= radius + security_distance)
     {
-      beta = (180.0 - alpha) *
-             (1 - ((obstacle_distance - radius) / security_distance));
+      beta = (180.0 - alpha) * (1 - ((obstacle_distance - radius) / security_distance));
     }
 
     double temp_bound = obstacle_direction - (alpha + beta);
@@ -707,4 +699,4 @@ double ORM::getRightBound(const std::vector<Point>& L, double goal_direction,
 
   return bound;
 }
-}
+}  // namespace collision_avoidance

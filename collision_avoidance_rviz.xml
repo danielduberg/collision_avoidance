@@ -1,9 +1,0 @@
-<library path="lib/libcollision_avoidance_rviz">
-  <class name="collision_avoidance_rviz/Collision Avoidance Configure"
-         type="collision_avoidance_rviz::CAPanel"
-         base_class_type="rviz::Panel">
-    <description>
-      A panel widget allowing...
-    </description>
-  </class>
-</library>
