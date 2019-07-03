@@ -2,47 +2,33 @@
 
 namespace collision_avoidance
 {
-NoInput::NoInput() {}
-
-void NoInput::avoidCollision(geometry_msgs::TwistStamped* control,
-                             const std::vector<Point>& obstacles, double radius,
-                             double min_distance_hold)
+namespace no_input
 {
-  double x_min = 10000;
-  double y_min = 10000;
-  double x_max = -10000;
-  double y_max = -10000;
+Eigen::Vector2d avoidCollision(const std::vector<Eigen::Vector2d>& obstacles, double radius, double min_distance_hold)
+{
+  std::pair<double, double> x(-10000, 10000);
+  std::pair<double, double> y(x);
 
-  for (size_t i = 0; i < obstacles.size(); ++i)
+  double closest_distance = radius + min_distance_hold;
+  for (const Eigen::Vector2d& obstacle : obstacles)
   {
-    if (!Point::isfinite(obstacles[i]))
+    if (!obstacle.allFinite())
     {
-      // No reading here
       continue;
     }
 
-    double distance = Point::getDistance(obstacles[i]);
-
-    if (distance <= radius + min_distance_hold)
+    double distance = obstacle.norm();
+    if (distance < closest_distance)
     {
-      double direction = Point::getDirectionDegrees(obstacles[i]) + 180.0;
-      if (direction >= 360)
-      {
-        direction -= 360;
-      }
+      double magnitude = closest_distance - distance;
+      double direction = std::atan2(obstacle[1], obstacle[0]) + M_PI;  // We want to move in the opposite direction
 
-      double magnitude = (radius + min_distance_hold) - distance;
-
-      Point p = Point::getPointFromVectorDegrees(direction, magnitude);
-
-      x_min = std::min(x_min, p.x_);
-      x_max = std::max(x_max, p.x_);
-      y_min = std::min(y_min, p.y_);
-      y_max = std::max(y_max, p.y_);
+      x = std::minmax({ x.first, x.second, magnitude * std::cos(direction) });
+      y = std::minmax({ y.first, y.second, magnitude * std::sin(direction) });
     }
   }
 
-  control->twist.linear.x = (x_min + x_max) / 2.0;
-  control->twist.linear.y = (y_min + y_max) / 2.0;
+  return Eigen::Vector2d(x.first + x.second, y.first + y.second) * 2.0;
 }
-}
+}  // namespace no_input
+}  // namespace collision_avoidance

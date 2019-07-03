@@ -136,7 +136,6 @@ set(COLLISION_AVOIDANCE_SOURCE_FILES
   src/${PROJECT_NAME}/collision_avoidance.cpp
   src/${PROJECT_NAME}/obstacle_restriction_method.cpp
   src/${PROJECT_NAME}/no_input.cpp
-  src/${PROJECT_NAME}/point.cpp
 )
 
 ## Declare a C++ library

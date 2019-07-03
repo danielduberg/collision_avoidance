@@ -1,23 +1,18 @@
-#pragma once
+#ifndef COLLISION_AVOIDANCE_NO_INPUT_H
+#define COLLISION_AVOIDANCE_NO_INPUT_H
 
 #include <ros/ros.h>
 
 #include <geometry_msgs/TwistStamped.h>
 
-#include <collision_avoidance/point.h>
+#include <Eigen/Dense>
 
 namespace collision_avoidance
 {
-
-class NoInput
+namespace no_input
 {
-public:
-  static void avoidCollision(geometry_msgs::TwistStamped* control,
-                             const std::vector<Point>& obstacles, double radius,
-                             double min_distance_hold);
+Eigen::Vector2d avoidCollision(const std::vector<Eigen::Vector2d>& obstacles, double radius, double min_distance_hold);
+}  // namespace no_input
+}  // namespace collision_avoidance
 
-private:
-  // Disallow creating an instance of this object
-  NoInput();
-};
-}
+#endif  // COLLISION_AVOIDANCE_NO_INPUT_H
