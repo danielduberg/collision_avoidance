@@ -9,6 +9,15 @@
 
   <node pkg="nodelet" type="nodelet" name="collision_avoidance_nodelet" args="load collision_avoidance/CollisionAvoidanceNodelet collision_avoidance_manager" output="screen">
       <rosparam file="$(arg collision_avoidance_config_file)" command="load" />
+
+      <remap from="map" to="" />
+      <remap from="sensor" to="" />
+      <remap from="odometry" to="" />
+      <remap from="imu" to="" />
+      <remap from="control" to="" />
+      <remap from="move_to" to="" />
+
+      <param name="robot_frame_id" value="base_link" />
   </node>
 
   <!-- <node pkg="nodelet" type="nodelet" name="laserscan_to_pointcloud_nodelet" args="load laserscan_to_pointcloud/LTP collision_avoidance_manager" output="screen">

@@ -16,14 +16,14 @@ ORM::ORM(double radius, double security_distance, double epsilon)
 {
 }
 
-Eigen::Vector2d ORM::avoidCollision(const Eigen::Vector2d& goal, const std::vector<Eigen::Vector2d>& obstacles)
+Eigen::Vector2d ORM::avoidCollision(const Eigen::Vector2d& goal, const PolarHistogram& obstacles)
 {
   Eigen::Vector2d subgoal(subgoalSelector(goal, obstacles));
 
   return motionComputation(subgoal, obstacles);
 }
 
-Eigen::Vector2d ORM::subgoalSelector(const Eigen::Vector2d& goal, const std::vector<Eigen::Vector2d>& obstacles)
+Eigen::Vector2d ORM::subgoalSelector(const Eigen::Vector2d& goal, const PolarHistogram& obstacles)
 {
   if (isPathClear(goal, obstacles))
   {
@@ -31,20 +31,19 @@ Eigen::Vector2d ORM::subgoalSelector(const Eigen::Vector2d& goal, const std::vec
     return goal;
   }
 
-  double rad_per_index = 2.0 * M_PI / obstacles.size();
+  // We have to find a subgoal
 
-  int wanted_index = std::atan2(goal[1], goal[0]) / rad_per_index;
+  double goal_direction = std::atan2(goal[1], goal[0]);
 
   Eigen::Vector2d subgoal(goal);
-  // We have to find a subgoal
-  for (int i = 1; i < obstacles.size() / 2; ++i)
+  for (double d = obstacles.bucketSize(); d < M_PI; d += obstacles.bucketSize())
   {
-    for (int j : { -1, 1 })
+    for (double i : { -1, 1 })
     {
-      int current_index = mod(wanted_index + (j * i), obstacles.size());
-      int previous_index = mod(wanted_index + (j * (i - 1)), obstacles.size());
+      double current_direction = goal_direction + (i * d);
+      double previous_direction = goal_direction + (i * (d - obstacles.bucketSize()));
 
-      if (isSubgoal(obstacles, current_index, previous_index, &subgoal))
+      if (isSubgoal(obstacles, current_direction, previous_direction, &subgoal))
       {
         return subgoal;
       }
@@ -54,43 +53,38 @@ Eigen::Vector2d ORM::subgoalSelector(const Eigen::Vector2d& goal, const std::vec
   return goal;
 }
 
-bool ORM::isSubgoal(const std::vector<Eigen::Vector2d>& obstacles, int index_1, int index_2, Eigen::Vector2d* subgoal)
+bool ORM::isSubgoal(const PolarHistogram& obstacles, double direction_1, double direction_2, Eigen::Vector2d* subgoal)
 {
   // TODO: Maybe check for NaN? Or assume that it is never NaN?
-  if (!obstacles[index_1].allFinite() && !obstacles[index_2].allFinite())
+  if (!obstacles.isFinite(direction_1) && !obstacles.isFinite(direction_2))
   {
     // Not a subgoal becuase it is only open space
     return false;
   }
 
-  double rad_per_index = 2.0 * M_PI / obstacles.size();
-
-  if (!obstacles[index_1].allFinite())
+  if (!obstacles.isFinite(direction_1))
   {
-    // This makes it so index_1 is always finite
-    int temp = index_1;
-    index_1 = index_2;
-    index_2 = temp;
+    // This makes it so direction_1 is always finite
+    double temp = direction_1;
+    direction_1 = direction_2;
+    direction_2 = temp;
   }
 
   Eigen::Vector2d temp_subgoal;
 
-  if (!obstacles[index_2].allFinite())
+  if (!obstacles.isFinite(direction_2))
   {
     // Found subgoal at the edge of an obstacle
-    double distance = obstacles[index_1].norm() + radius_ + epsilon_;
-    double direction = std::atan2(obstacles[index_1][1], obstacles[index_1][0]);
-
-    temp_subgoal[0] = distance * std::cos(direction);
-    temp_subgoal[1] = distance * std::sin(direction);
+    temp_subgoal = obstacles.getPoint(direction_1);
   }
   else
   {
     // We know that both are finite now
-    if ((obstacles[index_2] - obstacles[index_1]).norm() > 2.0 * radius_)
+    // TODO: Maybe save the points?
+    if ((obstacles.getPoint(direction_2) - obstacles.getPoint(direction_1)).norm() > 2.0 * radius_)
     {
       // Found a subgoal between two obstacles
-      temp_subgoal = (obstacles[index_1] + obstacles[index_2]) / 2.0;
+      temp_subgoal = (obstacles.getPoint(direction_1) + obstacles.getPoint(direction_2)) / 2.0;
     }
   }
 
@@ -102,12 +96,8 @@ bool ORM::isSubgoal(const std::vector<Eigen::Vector2d>& obstacles, int index_1, 
   return false;
 }
 
-Eigen::Vector2d ORM::motionComputation(const Eigen::Vector2d& goal, const std::vector<Eigen::Vector2d>& obstacles)
+Eigen::Vector2d ORM::motionComputation(const Eigen::Vector2d& goal, const PolarHistogram& obstacles)
 {
-  std::vector<Eigen::Vector2d> left, right;
-
-  getPointsOfInterest(goal, obstacles, &left, &right);
-
   double goal_direction = std::atan2(goal[1], goal[0]);
 
   std::pair<double, double> bounds = getBounds(goal, obstacles);
@@ -120,10 +110,8 @@ Eigen::Vector2d ORM::motionComputation(const Eigen::Vector2d& goal, const std::v
     // Move Straight towards goal
     return goal;
   }
-
-  double distance = goal.norm();
+  
   double direction;
-
   if (diff_right > 0 && diff_right > diff_left)
   {
     // Move towards left bound
@@ -143,11 +131,13 @@ Eigen::Vector2d ORM::motionComputation(const Eigen::Vector2d& goal, const std::v
     direction = std::atan2(middle[1], middle[0]);
   }
 
-  return distance * Eigen::Vector2d(std::cos(direction), std::sin(direction));
+  return goal.norm() * Eigen::Vector2d(std::cos(direction), std::sin(direction));
 }
 
-std::pair<double, double> ORM::getBounds(const Eigen::Vector2d& goal, const std::vector<Eigen::Vector2d>& obstacles)
+std::pair<double, double> ORM::getBounds(const Eigen::Vector2d& goal, const PolarHistogram& obstacles)
 {
+  // TODO: Should we only care about the obstacles that are in the way?
+
   double max_distance = goal.norm() + radius_;  // TODO: + epsilon_ also?
 
   double goal_direction = std::atan2(goal[1], goal[0]);
@@ -155,43 +145,36 @@ std::pair<double, double> ORM::getBounds(const Eigen::Vector2d& goal, const std:
   double left_bound = radBounded(goal_direction - (M_PI - 0.001));
   double right_bound = radBounded(goal_direction + (M_PI - 0.001));
 
-  for (const Eigen::Vector2d& obstacle : obstacles)
+  for (const PolarHistogram::Vector& obstacle : obstacles)
   {
-    if (!obstacle.allFinite())
+    if (!obstacle.isFinite() || obstacle.getRange() > max_distance)
     {
       continue;
     }
 
-    double obstacle_distance = obstacle.norm();
-    if (obstacle_distance > max_distance)
-    {
-      continue;
-    }
-
-    double alpha = std::fabs(std::atan((radius_ + security_distance_) / obstacle_distance));  // TODO: atan or atan2?
+    double alpha = std::fabs(std::atan((radius_ + security_distance_) / obstacle.getRange()));
 
     double beta = 0;
-    if (obstacle_distance < radius_ + security_distance_)
+    if (obstacle.getRange() < radius_ + security_distance_)
     {
-      beta = (M_PI - alpha) * (1.0 - ((obstacle_distance - radius_) / security_distance_));
+      beta = (M_PI - alpha) * (1.0 - ((obstacle.getRange() - radius_) / security_distance_));
     }
 
     double alpha_beta = alpha + beta;
 
-    double obstacle_direction = std::atan2(obstacle[1], obstacle[0]);
-    double obstacle_direction_goal_origin = radBounded(obstacle_direction - goal_direction);
+    double obstacle_direction_goal_origin = radBounded(obstacle.getAngle() - goal_direction);
     if (obstacle_direction_goal_origin > 0)
     {
       if (obstacle_direction_goal_origin - alpha_beta < radBounded(right_bound - goal_direction))
       {
-        right_bound = obstacle_direction - alpha_beta;
+        right_bound = obstacle.getAngle() - alpha_beta;
       }
     }
     else
     {
       if (obstacle_direction_goal_origin + alpha_beta > radBounded(left_bound - goal_direction))
       {
-        left_bound = obstacle_direction + alpha_beta;
+        left_bound = obstacle.getAngle() + alpha_beta;
       }
     }
   }
@@ -199,7 +182,7 @@ std::pair<double, double> ORM::getBounds(const Eigen::Vector2d& goal, const std:
   return std::make_pair(left_bound, right_bound);
 }
 
-bool ORM::isPathClear(const Eigen::Vector2d& goal, const std::vector<Eigen::Vector2d>& obstacles)
+bool ORM::isPathClear(const Eigen::Vector2d& goal, const PolarHistogram& obstacles)
 {
   // A contains points on the left side of goal
   // B contains points on the right side of goal
@@ -229,34 +212,24 @@ bool ORM::isPathClear(const Eigen::Vector2d& goal, const std::vector<Eigen::Vect
   return true;
 }
 
-void ORM::getPointsOfInterest(const Eigen::Vector2d& goal, const std::vector<Eigen::Vector2d>& obstacles,
+void ORM::getPointsOfInterest(const Eigen::Vector2d& goal, const PolarHistogram& obstacles,
                               std::vector<Eigen::Vector2d>* left, std::vector<Eigen::Vector2d>* right)
 {
-  double rad_per_index = 2.0 * M_PI / obstacles.size();
-
-  int wanted_index = std::atan2(goal[1], goal[0]) / rad_per_index;
-
+  double goal_direction = std::atan2(goal[1], goal[0]);
   double max_distance = goal.norm() + radius_;
 
-  for (size_t i = 1; i < obstacles.size() / 2; ++i)
+  for (double d = obstacles.bucketSize(); d < M_PI; d += obstacles.bucketSize())
   {
-    for (int j : { -1, 1 })
+    double direction = goal_direction + d;
+    if (obstacles.isFinite(direction) && obstacles.getRange(direction) <= max_distance)
     {
-      int current_index = mod(wanted_index + (i * j), obstacles.size());
+      left->emplace_back(obstacles.getPoint(direction));
+    }
 
-      if (!obstacles[current_index].allFinite() || obstacles[current_index].norm() > max_distance)
-      {
-        continue;
-      }
-
-      if (-1 == j)
-      {
-        right->emplace_back(obstacles[current_index]);
-      }
-      else
-      {
-        left->emplace_back(obstacles[current_index]);
-      }
+    direction = goal_direction - d;
+    if (obstacles.isFinite(direction) && obstacles.getRange(direction) <= max_distance)
+    {
+      right->emplace_back(obstacles.getPoint(direction));
     }
   }
 }

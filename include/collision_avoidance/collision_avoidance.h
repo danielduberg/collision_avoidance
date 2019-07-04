@@ -18,6 +18,7 @@
 #include <sensor_msgs/Imu.h>
 
 #include <collision_avoidance/obstacle_restriction_method.h>
+#include <collision_avoidance/polar_histogram.h>
 
 #include <collision_avoidance/CollisionAvoidanceConfig.h>
 #include <dynamic_reconfigure/server.h>
@@ -77,11 +78,15 @@ private:
   double max_z_vel_;
   double max_yaw_rate_;
 
-  // 
+  //
   double max_direction_change_;
   int max_times_backwards_;
 
   int num_histogram_;
+
+  double radius_;
+  double height_;
+  double min_distance_hold_;
 
 public:
   CollisionAvoidance(ros::NodeHandle& nh, ros::NodeHandle& nh_priv);
@@ -91,7 +96,7 @@ private:
 
   bool avoidCollision(geometry_msgs::PoseStamped setpoint);
 
-  std::vector<Eigen::Vector2d> getObstacles();
+  PolarHistogram getObstacles();
 
   std::pair<double, double> getDistanceToTarget(const geometry_msgs::PoseStamped& target);
 

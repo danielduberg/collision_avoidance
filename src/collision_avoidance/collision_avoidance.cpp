@@ -17,11 +17,7 @@ CollisionAvoidance::CollisionAvoidance(ros::NodeHandle& nh, ros::NodeHandle& nh_
   , as_(nh, "move_to", boost::bind(&CollisionAvoidance::goalCallback, this, _1), false)
   , tf_listener_(tf_buffer_)
   , cs_(nh_priv)
-  , orm_(10, 10, 10)  // TODO: Init ORM
   , robot_frame_id_(nh_priv.param<std::string>("robot_frame_id", "base_link"))
-  , distance_converged_(nh_priv.param("distance_converged", 0.1))
-  , yaw_converged_(nh_priv.param("yaw_converged", 0.1))
-  , frequency_(nh_priv.param("frequency", 20.0))
   , publish_timer_(nh_priv.createTimer(ros::Rate(frequency_), &CollisionAvoidance::timerCallback, this, false, false))
 {
   // Set up dynamic reconfigure server
@@ -112,7 +108,7 @@ bool CollisionAvoidance::avoidCollision(geometry_msgs::PoseStamped setpoint)
   {
     Eigen::Vector2d goal(setpoint.pose.position.x, setpoint.pose.position.y);
 
-    std::vector<Eigen::Vector2d> obstacles = getObstacles();
+    PolarHistogram obstacles = getObstacles();
 
     Eigen::Vector2d control_2d(orm_.avoidCollision(goal, obstacles));
 
@@ -135,7 +131,7 @@ bool CollisionAvoidance::avoidCollision(geometry_msgs::PoseStamped setpoint)
   return true;
 }
 
-std::vector<Eigen::Vector2d> CollisionAvoidance::getObstacles()
+PolarHistogram CollisionAvoidance::getObstacles()
 {
   // Get data from map
 
@@ -156,10 +152,9 @@ std::vector<Eigen::Vector2d> CollisionAvoidance::getObstacles()
   range_image.createFromPointCloud(*map_, pcl::deg2rad(1.0), pcl::deg2rad(360.0), pcl::deg2rad(180.0), sensor_pose,
                                    pcl::RangeImage::LASER_FRAME, 0, 0, 1);
 
-  std::vector<Eigen::Vector2d> obstacles(num_histogram_, Eigen::Vector2d(std::numeric_limits<double>::infinity(),
-                                                                         std::numeric_limits<double>::infinity()));
+  PolarHistogram obstacles(num_histogram_, std::numeric_limits<double>::infinity());
 
-  double rad_per_index = 2.0 * M_PI / obstacles.size();
+  double rad_per_index = 2.0 * M_PI / obstacles.numBuckets();
   for (const pcl::PointWithRange& pr : range_image)
   {
     if (!pcl::isFinite(pr))
@@ -168,12 +163,9 @@ std::vector<Eigen::Vector2d> CollisionAvoidance::getObstacles()
     }
 
     double direction = std::atan2(pr.y, pr.x);
-    int index = direction / rad_per_index;
-
-    if (!obstacles[index].allFinite() || pr.range < obstacles[index].norm())
+    if (!obstacles.isFinite(direction) || pr.range < obstacles.getRange(direction))
     {
-      obstacles[index][0] = pr.x;
-      obstacles[index][1] = pr.y;
+      obstacles.setRange(direction, pr.range);
     }
   }
 
@@ -200,12 +192,10 @@ std::vector<Eigen::Vector2d> CollisionAvoidance::getObstacles()
     }
 
     double direction = std::atan2(p.x, p.y);
-    int index = direction / rad_per_index;
-
-    if (!obstacles[index].allFinite() || std::hypot(p.x, p.y) < obstacles[index].norm())
+    double range = std::hypot(p.x, p.y);
+    if (!obstacles.isFinite(direction) || range < obstacles.getRange(direction))
     {
-      obstacles[index][0] = p.x;
-      obstacles[index][1] = p.y;
+      obstacles.setRange(direction, range);
     }
   }
 
@@ -237,8 +227,23 @@ void CollisionAvoidance::timerCallback(const ros::TimerEvent& event)
 
 void CollisionAvoidance::configCallback(const collision_avoidance::CollisionAvoidanceConfig& config, uint32_t level)
 {
+  distance_converged_ = config.distance_converged;
+  yaw_converged_ = config.yaw_converged;
+
+  frequency_ = config.frequency;
+
   max_xy_vel_ = config.max_xy_vel;
-  max_z_vel_ = config.min_z_vel;
-  max_yaw_rate_ = config.max_yaw_rate;
+  max_z_vel_ = config.max_z_vel;
+  max_yaw_rate_ = config.max_yaw_rate * M_PI / 180.0;
+
+  radius_ = config.radius;
+  height_ = config.height;
+  min_distance_hold_ = config.min_distance_hold;
+
+  num_histogram_ = config.polar_size;
+
+  orm_.setRadius(radius_);
+  orm_.setSecurityDistance(config.security_distance);
+  orm_.setEpsilon(config.epsilon);
 }
 }  // namespace collision_avoidance

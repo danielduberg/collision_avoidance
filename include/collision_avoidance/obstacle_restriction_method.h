@@ -1,10 +1,13 @@
-#pragma once  // TODO: FIX
+#ifndef COLLISION_AVOIDANCE_OBSTACLE_RESTRICTION_METHOD_H
+#define COLLISION_AVOIDANCE_OBSTACLE_RESTRICTION_METHOD_H
 
 #include <ros/ros.h>
 
 #include <geometry_msgs/TwistStamped.h>
 
-#define DEBUG_ORM
+#include <collision_avoidance/polar_histogram.h>
+
+// TODO: Make methods const
 
 namespace collision_avoidance
 {
@@ -17,9 +20,37 @@ private:
   double epsilon_;
 
 public:
-  ORM(double radius, double security_distance, double epsilon);
+  ORM(double radius = 0.0, double security_distance = 0.0, double epsilon = 0.0);
 
-  Eigen::Vector2d avoidCollision(const Eigen::Vector2d& goal, const std::vector<Eigen::Vector2d>& obstacles);
+  Eigen::Vector2d avoidCollision(const Eigen::Vector2d& goal, const PolarHistogram& obstacles);
+
+  double getRadius() const
+  {
+    return radius_;
+  }
+  double getSecurityDistance() const
+  {
+    return security_distance_;
+  }
+  double getEpsilon() const
+  {
+    return epsilon_;
+  }
+
+  void setRadius(double radius)
+  {
+    radius_ = radius;
+  }
+
+  void setSecurityDistance(double security_distance)
+  {
+    security_distance_ = security_distance;
+  }
+
+  void setEpsilon(double epsilon)
+  {
+    epsilon_ = epsilon;
+  }
 
 private:
   inline double radBounded(double value)
@@ -27,17 +58,17 @@ private:
     return std::remainder(value, 2.0 * M_PI);
   }
 
-  Eigen::Vector2d subgoalSelector(const Eigen::Vector2d& goal, const std::vector<Eigen::Vector2d>& obstacles);
+  Eigen::Vector2d subgoalSelector(const Eigen::Vector2d& goal, const PolarHistogram& obstacles);
 
-  bool isSubgoal(const std::vector<Eigen::Vector2d>& obstacles, int index_1, int index_2, Eigen::Vector2d* subgoal);
+  bool isSubgoal(const PolarHistogram& obstacles, double direction_1, double direction_2, Eigen::Vector2d* subgoal);
 
-  Eigen::Vector2d motionComputation(const Eigen::Vector2d& goal, const std::vector<Eigen::Vector2d>& obstacles);
+  Eigen::Vector2d motionComputation(const Eigen::Vector2d& goal, const PolarHistogram& obstacles);
 
-  std::pair<double, double> getBounds(const Eigen::Vector2d& goal, const std::vector<Eigen::Vector2d>& obstacles);
+  std::pair<double, double> getBounds(const Eigen::Vector2d& goal, const PolarHistogram& obstacles);
 
-  bool isPathClear(const Eigen::Vector2d& goal, const std::vector<Eigen::Vector2d>& obstacles);
+  bool isPathClear(const Eigen::Vector2d& goal, const PolarHistogram& obstacles);
 
-  void getPointsOfInterest(const Eigen::Vector2d& goal, const std::vector<Eigen::Vector2d>& obstacles,
+  void getPointsOfInterest(const Eigen::Vector2d& goal, const PolarHistogram& obstacles,
                            std::vector<Eigen::Vector2d>* left, std::vector<Eigen::Vector2d>* right);
 
   std::vector<Eigen::Vector2d> getRectangle(const Eigen::Vector2d& goal);
@@ -48,3 +79,5 @@ private:
   bool isPointInPolygon(const std::vector<Eigen::Vector2d>& polygon, const Eigen::Vector2d& point);
 };
 }  // namespace collision_avoidance
+
+#endif  // COLLISION_AVOIDANCE_OBSTACLE_RESTRICTION_METHOD_H
