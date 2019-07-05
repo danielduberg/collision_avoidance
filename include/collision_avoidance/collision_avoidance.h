@@ -36,6 +36,8 @@ private:
 
   // Publishers
   ros::Publisher control_pub_;
+  ros::Publisher path_pub_;
+  ros::Publisher obstacle_pub_;
 
   // Action servers
   actionlib::SimpleActionServer<collision_avoidance::PathControlAction> as_;
@@ -87,6 +89,9 @@ private:
   double radius_;
   double height_;
   double min_distance_hold_;
+
+  double leaf_size_;
+  double obstacle_window_;
 
 public:
   CollisionAvoidance(ros::NodeHandle& nh, ros::NodeHandle& nh_priv);

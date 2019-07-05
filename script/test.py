@@ -1,7 +1,8 @@
 #! /usr/bin/env python
 
-import rospy
 from __future__ import print_function
+
+import rospy
 
 # Brings in the SimpleActionClient
 import actionlib
@@ -10,52 +11,89 @@ import actionlib
 # goal message and the result message.
 import collision_avoidance.msg
 
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from nav_msgs.msg import Path
-from tf.transformations import quaternion_from_euler
+from tf.transformations import euler_from_quaternion, quaternion_from_euler
+
+import numpy
 
 
-def collision_avoidance_client():
-    # Creates the SimpleActionClient, passing the type of the action
-    # (FibonacciAction) to the constructor.
-    client = actionlib.SimpleActionClient(
-        'move_to', collision_avoidance.msg.PathControlAction)
+path = Path()
+pub = None
+client = None
+
+distance_converged = 0.1
+yaw_converged = 0.1
+
+current_pose = PoseStamped()
+
+
+def start_callback(msg):
+    print("Sending of path")
+    collision_avoidance_client(path)
+
+
+def pose_callback(pose):
+    global current_pose
+
+    current_pose = pose
+
+
+def callback(pose):
+    path.header = pose.header
+    path.poses.append(pose)
+    current_pose_saved = current_pose
+    if current_pose_saved is not None:
+        path.poses.insert(0, current_pose_saved)
+        pub.publish(path)
+        path.poses.remove(current_pose_saved)
+    else:
+        pub.publish(path)
+
+
+def collision_avoidance_client(path_local):
+    global path
 
     # Waits until the action server has started up and started
     # listening for goals.
+    print("Waiting for server")
     client.wait_for_server()
-
-    path = Path()
-    path.header.frame_id = 'map'
-    path.header.stamp = rospy.Time.now()
-
-    pose = PoseStamped()
-    pose.header = path.header
-    pose.pose.position.x = 1
-    pose.pose.position.y = 0
-    pose.pose.position.z = 1
-    pose.pose.orientation = quaternion_from_euler(0.0, 0.0, 0.0)
-
-    path.poses.append(pose)
+    print("Connected to server")
 
     # Creates a goal to send to the action server.
-    goal = collision_avoidance.msg.PathControlGoal(path=path)
+    print("Create goal")
+    goal = collision_avoidance.msg.PathControlGoal(path=path_local)
+
+    path = Path()
 
     # Sends the goal to the action server.
+    print("Send goal to server")
     client.send_goal(goal)
 
     # Waits for the server to finish performing the action.
+    print("Waiting for result")
     client.wait_for_result()
 
     # Prints out the result of executing the action
-    client.get_result()
+    print(client.get_result())
 
 
 if __name__ == '__main__':
     try:
-        # Initializes a rospy node so that the SimpleActionClient can
-        # publish and subscribe over ROS.
+            # Initializes a rospy node so that the SimpleActionClient can
+            # publish and subscribe over ROS.
         rospy.init_node('collision_avoidance_test')
-        collision_avoidance_client()
+
+        pub = rospy.Publisher("path", Path, latch=True, queue_size=10)
+        sub = rospy.Subscriber("/setpoint", PoseStamped, callback)
+        start_sub = rospy.Subscriber(
+            "/initialpose", PoseWithCovarianceStamped, start_callback)
+        pose_sub = rospy.Subscriber(
+            "/mavros/local_position/pose", PoseStamped, pose_callback)
+
+        client = actionlib.SimpleActionClient(
+            'move_to2', collision_avoidance.msg.PathControlAction)
+
+        rospy.spin()
     except rospy.ROSInterruptException:
         print("program interrupted before completion", file=sys.stderr)
