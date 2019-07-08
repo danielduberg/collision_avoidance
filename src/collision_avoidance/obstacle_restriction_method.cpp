@@ -20,6 +20,11 @@ Eigen::Vector2d ORM::avoidCollision(const Eigen::Vector2d& goal, const PolarHist
 {
   Eigen::Vector2d subgoal(subgoalSelector(goal, obstacles));
 
+  if (subgoal.isZero())
+  {
+    return subgoal;
+  }
+
   return motionComputation(subgoal, obstacles);
 }
 
@@ -32,7 +37,6 @@ Eigen::Vector2d ORM::subgoalSelector(const Eigen::Vector2d& goal, const PolarHis
   }
 
   // We have to find a subgoal
-
   double goal_direction = std::atan2(goal[1], goal[0]);
 
   Eigen::Vector2d subgoal(goal);
@@ -42,7 +46,6 @@ Eigen::Vector2d ORM::subgoalSelector(const Eigen::Vector2d& goal, const PolarHis
     {
       double current_direction = goal_direction + (i * d);
       double previous_direction = goal_direction + (i * (d - obstacles.bucketSize()));
-
       if (isSubgoal(obstacles, current_direction, previous_direction, &subgoal))
       {
         return subgoal;
@@ -50,7 +53,7 @@ Eigen::Vector2d ORM::subgoalSelector(const Eigen::Vector2d& goal, const PolarHis
     }
   }
 
-  return goal;
+  return Eigen::Vector2d(0, 0);
 }
 
 bool ORM::isSubgoal(const PolarHistogram& obstacles, double direction_1, double direction_2, Eigen::Vector2d* subgoal)
@@ -110,7 +113,7 @@ Eigen::Vector2d ORM::motionComputation(const Eigen::Vector2d& goal, const PolarH
     // Move Straight towards goal
     return goal;
   }
-  
+
   double direction;
   if (diff_right > 0 && diff_right > diff_left)
   {

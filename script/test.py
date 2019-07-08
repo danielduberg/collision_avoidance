@@ -75,7 +75,7 @@ def collision_avoidance_client(path_local):
     client.wait_for_result()
 
     # Prints out the result of executing the action
-    print(client.get_result())
+    print("Done")
 
 
 if __name__ == '__main__':

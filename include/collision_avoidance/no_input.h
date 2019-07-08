@@ -7,11 +7,14 @@
 
 #include <Eigen/Dense>
 
+#include <collision_avoidance/polar_histogram.h>
+
 namespace collision_avoidance
 {
 namespace no_input
 {
-Eigen::Vector2d avoidCollision(const std::vector<Eigen::Vector2d>& obstacles, double radius, double min_distance_hold);
+Eigen::Vector2d avoidCollision(const Eigen::Vector2d& goal, const PolarHistogram& obstacles, double radius,
+                               double min_distance_hold);
 }  // namespace no_input
 }  // namespace collision_avoidance
 

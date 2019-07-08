@@ -79,6 +79,7 @@ private:
   double max_xy_vel_;
   double max_z_vel_;
   double max_yaw_rate_;
+  double h_m_;
 
   //
   double max_direction_change_;
@@ -91,7 +92,6 @@ private:
   double min_distance_hold_;
 
   double leaf_size_;
-  double obstacle_window_;
 
 public:
   CollisionAvoidance(ros::NodeHandle& nh, ros::NodeHandle& nh_priv);
@@ -101,11 +101,17 @@ private:
 
   bool avoidCollision(geometry_msgs::PoseStamped setpoint);
 
-  PolarHistogram getObstacles();
+  void noInput(geometry_msgs::PoseStamped setpoint) const;
+
+  void adjustVelocity(geometry_msgs::TwistStamped* control, const PolarHistogram& obstacles) const;
+
+  PolarHistogram getObstacles(double obstacle_window) const;
 
   std::pair<double, double> getDistanceToTarget(const geometry_msgs::PoseStamped& target);
 
   void timerCallback(const ros::TimerEvent& event);
+
+  void publishObstacles(const PolarHistogram& obstacles) const;
 
   void mapCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& map)
   {
