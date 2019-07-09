@@ -7,10 +7,10 @@ namespace no_input
 Eigen::Vector2d avoidCollision(const Eigen::Vector2d& goal, const PolarHistogram& obstacles, double radius,
                                double min_distance_hold)
 {
-  double x_min = std::numeric_limits<double>::max();
-  double y_min = std::numeric_limits<double>::max();
-  double x_max = -std::numeric_limits<double>::max();
-  double y_max = -std::numeric_limits<double>::max();
+  double x_min = 1000000;
+  double y_min = 1000000;
+  double x_max = -1000000;
+  double y_max = -1000000;
 
   double closest_distance = radius + min_distance_hold;
   for (const PolarHistogram::Vector& obstacle : obstacles)
@@ -34,15 +34,7 @@ Eigen::Vector2d avoidCollision(const Eigen::Vector2d& goal, const PolarHistogram
     }
   }
 
-  // if (goal[0] > x.first + radius && goal[0] < x.second - radius)
-  // {
-  //   if (goal[1] > y.first + radius && goal[1] < y.second - radius)
-  //   {
-  //     return goal;
-  //   }
-  // }
-
-  return Eigen::Vector2d((x_min + x_max) / 2.0, (y_min + y_max) / 2.0);
+  return goal + Eigen::Vector2d((x_min + x_max) / 2.0, (y_min + y_max) / 2.0);
 }
 }  // namespace no_input
 }  // namespace collision_avoidance
