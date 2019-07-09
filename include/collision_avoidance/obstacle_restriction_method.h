@@ -19,10 +19,16 @@ private:
   double security_distance_;
   double epsilon_;
 
+  ros::Publisher goal_pub_;
+  ros::Publisher obstacles_pub_;
+
 public:
   ORM(double radius = 0.0, double security_distance = 0.0, double epsilon = 0.0);
 
-  Eigen::Vector2d avoidCollision(const Eigen::Vector2d& goal, const PolarHistogram& obstacles);
+  ORM(ros::NodeHandle& nh, double radius = 0.0, double security_distance = 0.0, double epsilon = 0.0);
+
+  Eigen::Vector2d avoidCollision(const Eigen::Vector2d& goal, const PolarHistogram& obstacles,
+                                 const std::string& frame_id = "");
 
   double getRadius() const
   {

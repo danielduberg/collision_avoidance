@@ -65,6 +65,9 @@ def collision_avoidance_client(path_local):
     goal = collision_avoidance.msg.PathControlGoal(path=path_local)
 
     path = Path()
+    path.header = path_local.header
+    path.header.stamp = rospy.Time.now()
+    pub.publish(path)
 
     # Sends the goal to the action server.
     print("Send goal to server")

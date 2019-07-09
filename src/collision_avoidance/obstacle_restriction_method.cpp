@@ -4,6 +4,9 @@
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl_ros/point_cloud.h>
 
+#include <geometry_msgs/PointStamped.h>
+#include <visualization_msgs/MarkerArray.h>
+
 namespace collision_avoidance
 {
 int mod(int a, int b)
@@ -16,9 +19,30 @@ ORM::ORM(double radius, double security_distance, double epsilon)
 {
 }
 
-Eigen::Vector2d ORM::avoidCollision(const Eigen::Vector2d& goal, const PolarHistogram& obstacles)
+ORM::ORM(ros::NodeHandle& nh, double radius, double security_distance, double epsilon)
+  : radius_(radius)
+  , security_distance_(security_distance)
+  , epsilon_(epsilon)
+  , goal_pub_(nh.advertise<geometry_msgs::PointStamped>("subgoal", 10))
+  , obstacles_pub_(nh.advertise<visualization_msgs::MarkerArray>("points_of_interest", 10))
+{
+}
+
+Eigen::Vector2d ORM::avoidCollision(const Eigen::Vector2d& goal, const PolarHistogram& obstacles,
+                                    const std::string& frame_id)
 {
   Eigen::Vector2d subgoal(subgoalSelector(goal, obstacles));
+
+  if ("" != frame_id && goal_pub_.getNumSubscribers() > 0)
+  {
+    geometry_msgs::PointStamped goal_point;
+    goal_point.header.frame_id = frame_id;
+    goal_point.header.stamp = ros::Time::now();
+    goal_point.point.x = subgoal[0];
+    goal_point.point.y = subgoal[1];
+    goal_point.point.z = 0;
+    goal_pub_.publish(goal_point);
+  }
 
   if (subgoal.isZero())
   {
@@ -77,8 +101,9 @@ bool ORM::isSubgoal(const PolarHistogram& obstacles, double direction_1, double 
 
   if (!obstacles.isFinite(direction_2))
   {
-    // Found subgoal at the edge of an obstacle
-    temp_subgoal = obstacles.getPoint(direction_1);
+    // Found a potential subgoal at the edge of an obstacle
+    temp_subgoal[0] = obstacles.getRange(direction_1) * std::cos(direction_2);
+    temp_subgoal[1] = obstacles.getRange(direction_1) * std::sin(direction_2);
   }
   else
   {
@@ -86,8 +111,12 @@ bool ORM::isSubgoal(const PolarHistogram& obstacles, double direction_1, double 
     // TODO: Maybe save the points?
     if ((obstacles.getPoint(direction_2) - obstacles.getPoint(direction_1)).norm() > 2.0 * radius_)
     {
-      // Found a subgoal between two obstacles
+      // Found a potential subgoal between two obstacles
       temp_subgoal = (obstacles.getPoint(direction_1) + obstacles.getPoint(direction_2)) / 2.0;
+    }
+    else
+    {
+      return false;
     }
   }
 
@@ -155,7 +184,9 @@ std::pair<double, double> ORM::getBounds(const Eigen::Vector2d& goal, const Pola
       continue;
     }
 
-    double alpha = std::fabs(std::atan((radius_ + security_distance_) / obstacle.getRange()));
+    // TODO: atan or atan2?
+    // double alpha = std::fabs(std::atan((radius_ + security_distance_) / obstacle.getRange()));
+    double alpha = std::fabs(std::atan2(radius_ + security_distance_, obstacle.getRange()));
 
     double beta = 0;
     if (obstacle.getRange() < radius_ + security_distance_)
@@ -221,7 +252,7 @@ void ORM::getPointsOfInterest(const Eigen::Vector2d& goal, const PolarHistogram&
   double goal_direction = std::atan2(goal[1], goal[0]);
   double max_distance = goal.norm() + radius_;
 
-  for (double d = obstacles.bucketSize(); d < M_PI; d += obstacles.bucketSize())
+  for (double d = 0; d < M_PI; d += obstacles.bucketSize())
   {
     double direction = goal_direction + d;
     if (obstacles.isFinite(direction) && obstacles.getRange(direction) <= max_distance)
@@ -279,18 +310,21 @@ bool ORM::isPointInPolygon(const std::vector<Eigen::Vector2d>& polygon, const Ei
 
 std::vector<Eigen::Vector2d> ORM::getRectangle(const Eigen::Vector2d& goal)
 {
-  double distance = goal.norm();
+  double distance = goal.norm() + radius_;
+  double direction = std::atan2(goal[1], goal[0]);
 
-  double dx = goal[1] / distance;
-  double dy = -goal[0] / distance;
+  Eigen::Vector2d moved_goal(distance * std::cos(direction), distance * std::sin(direction));
+
+  double dx = moved_goal[1] / distance;
+  double dy = -moved_goal[0] / distance;
 
   // 2 * radius becuase then all obstacles that matters will be inside the rectangle
   double diameter = 2.0 * radius_;
 
   std::vector<Eigen::Vector2d> rectangle;
   rectangle.emplace_back(diameter * dx, diameter * dy);
-  rectangle.emplace_back(goal[0] + rectangle[0][0], goal[1] + rectangle[0][1]);
-  rectangle.emplace_back(goal[0] - rectangle[0][0], goal[1] - rectangle[0][1]);
+  rectangle.emplace_back(moved_goal[0] + rectangle[0][0], moved_goal[1] + rectangle[0][1]);
+  rectangle.emplace_back(moved_goal[0] - rectangle[0][0], moved_goal[1] - rectangle[0][1]);
   rectangle.emplace_back(-rectangle[0][0], -rectangle[0][1]);
 
   return rectangle;

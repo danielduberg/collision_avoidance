@@ -25,6 +25,7 @@ CollisionAvoidance::CollisionAvoidance(ros::NodeHandle& nh, ros::NodeHandle& nh_
   , as_(nh, "move_to", boost::bind(&CollisionAvoidance::goalCallback, this, _1), false)
   , tf_listener_(tf_buffer_)
   , cs_(nh_priv)
+  , orm_(nh_priv)
   , robot_frame_id_(nh_priv.param<std::string>("robot_frame_id", "base_link"))
   , publish_timer_(nh_priv.createTimer(ros::Rate(nh_priv.param("frequency", 20.0)), &CollisionAvoidance::timerCallback,
                                        this, false, false))
@@ -39,6 +40,12 @@ CollisionAvoidance::CollisionAvoidance(ros::NodeHandle& nh, ros::NodeHandle& nh_
 void CollisionAvoidance::goalCallback(const collision_avoidance::PathControlGoal::ConstPtr& goal)
 {
   if (goal->path.poses.empty())
+  {
+    as_.setSucceeded();
+    return;
+  }
+
+  if (!map_ || !last_sensor_data_ || !odometry_)
   {
     as_.setAborted();
     return;
@@ -66,12 +73,15 @@ void CollisionAvoidance::goalCallback(const collision_avoidance::PathControlGoal
     // to resume the original path.
 
     target_ = path.poses.front();
-    // Makes it so we look towards next setpoint
-    double dir = std::atan2(target_.pose.position.y - odometry_->pose.pose.position.y,
-                            target_.pose.position.x - odometry_->pose.pose.position.x);
-    tf2::Quaternion q;
-    q.setRPY(0, 0, dir);
-    tf2::convert(q, target_.pose.orientation);
+    if (path.poses.size() > 1)
+    {
+      // Makes it so we look towards next setpoint
+      double dir = std::atan2(path.poses[1].pose.position.y - target_.pose.position.y,
+                              path.poses[1].pose.position.x - target_.pose.position.x);
+      tf2::Quaternion q;
+      q.setRPY(0, 0, dir);
+      tf2::convert(q, target_.pose.orientation);
+    }
 
     std::pair<double, double> distance;
     ros::Rate r(frequency_);
@@ -112,7 +122,7 @@ void CollisionAvoidance::goalCallback(const collision_avoidance::PathControlGoal
       path_pub_.publish(temp_path);
 
       r.sleep();
-    } while (distance.first > distance_converged_ || distance.second > yaw_converged_);
+    } while (distance.first > distance_converged_);  // || distance.second > yaw_converged_);
 
     path.poses.erase(path.poses.begin());
   }
@@ -142,19 +152,41 @@ bool CollisionAvoidance::avoidCollision(geometry_msgs::PoseStamped setpoint)
   PolarHistogram obstacles = getObstacles(goal.norm() + (2.0 * radius_) + min_distance_hold_);
   publishObstacles(obstacles);
 
-  double yaw = tf2::getYaw(setpoint.pose.orientation);  // std::atan2(goal[1], goal[0]);
-  if (yaw < yaw_converged_)
+  double yaw = 0;
+  if (goal.norm() > distance_converged_)
   {
-    control_2d = orm_.avoidCollision(goal, obstacles);
+    yaw = std::atan2(goal[1], goal[0]);
+  }
+  else
+  {
+    yaw = tf2::getYaw(setpoint.pose.orientation);
+  }
+
+  bool valid = true;
+
+  if (std::abs(yaw) < yaw_converged_)
+  {
+    // Is this correct?
+    goal[0] -= odometry_->twist.twist.linear.x;
+    goal[1] -= odometry_->twist.twist.linear.y;
+
+    control_2d = orm_.avoidCollision(goal, obstacles, robot_frame_id_);
 
     double direction_change =
         std::fabs(std::remainder(std::atan2(goal[1], goal[0]) - std::atan2(control_2d[1], control_2d[0]), 2 * M_PI));
 
     if (control_2d.isZero() || direction_change > max_direction_change_)
     {
-      noInput(setpoint);
-      return false;
+      control_2d = no_input::avoidCollision(Eigen::Vector2d(0, 0), obstacles, radius_, min_distance_hold_);
+      valid = false;
     }
+    // else
+    // {
+    //   if (goal.norm() > distance_converged_)
+    //   {
+    //     yaw = std::atan2(control_2d[1], control_2d[0]);
+    //   }
+    // }
 
     ROS_INFO("Direction change: %.2f (deg)", direction_change * 180.0 / M_PI);
   }
@@ -177,7 +209,7 @@ bool CollisionAvoidance::avoidCollision(geometry_msgs::PoseStamped setpoint)
   adjustVelocity(&control, obstacles);
   control_pub_.publish(control);
 
-  return true;
+  return valid;
 }
 
 void CollisionAvoidance::noInput(geometry_msgs::PoseStamped setpoint) const
@@ -295,8 +327,7 @@ PolarHistogram CollisionAvoidance::getObstacles(double obstacle_window) const
     transform.rotate(Eigen::AngleAxisf(yaw, Eigen::Vector3f::UnitZ()));
     transform.rotate(Eigen::AngleAxisf(pitch, Eigen::Vector3f::UnitY()));
     transform.rotate(Eigen::AngleAxisf(roll, Eigen::Vector3f::UnitX()));
-    transform = transform.inverse();
-    pcl::transformPointCloud(*cloud, *cloud, transform);
+    pcl::transformPointCloud(*cloud, *cloud, transform.inverse());
 
     for (const pcl::PointXYZ& point : *cloud)
     {
@@ -305,8 +336,12 @@ PolarHistogram CollisionAvoidance::getObstacles(double obstacle_window) const
         continue;
       }
 
-      double direction = std::atan2(point.y, point.x);
-      double range = std::hypot(point.x, point.y);
+      pcl::PointXYZ p = point;
+      p.x = point.x - odometry_->twist.twist.linear.x;
+      p.y = point.y - odometry_->twist.twist.linear.y;
+
+      double direction = std::atan2(p.y, p.x);
+      double range = std::hypot(p.x, p.y);
       if (!obstacles.isFinite(direction) || range < obstacles.getRange(direction))
       {
         obstacles.setRange(direction, range);

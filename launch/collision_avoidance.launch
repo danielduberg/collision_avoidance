@@ -14,7 +14,7 @@
     <remap from="odometry" to="/mavros/local_position/odom" />
     <remap from="imu" to="/mavros/imu/data" />
     <remap from="~/control" to="/mavros/setpoint_velocity/cmd_vel" />
-    <remap from="~/path" to="/path" />
+    <remap from="~/path" to="~/path" />
     <remap from="~/obstacles" to="~/obstacles" />
     <remap from="move_to" to="move_to2" />
 
@@ -27,7 +27,7 @@
 
     <param name="max_xy_vel" value="1.0" />
     <param name="max_z_vel" value="1.0" />
-    <param name="max_yaw_rate" value="25.0" />
+    <param name="max_yaw_rate" value="50.0" />
     <param name="h_m" value="1.0" />
 
     <param name="radius" value="0.5" />
@@ -41,7 +41,7 @@
 
     <param name="max_times_backwards" value="100" />
     <param name="max_times_backwards_total" value="1000" />
-    <param name="max_direction_change" value="90" />
+    <param name="max_direction_change" value="45" />
   </node>
 
   <!-- <node pkg="nodelet" type="nodelet" name="laserscan_to_pointcloud_nodelet" args="load laserscan_to_pointcloud/LTP collision_avoidance_manager" output="screen">
