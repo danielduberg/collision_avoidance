@@ -280,12 +280,9 @@ void CollisionAvoidance::adjustVelocity(geometry_msgs::TwistStamped* control, co
 
 PolarHistogram CollisionAvoidance::getObstacles(double obstacle_window) const
 {
-  pcl::PointCloud<pcl::PointXYZ>::ConstPtr map_copy = map_;
-  pcl::PointCloud<pcl::PointXYZ>::ConstPtr last_sensor_data_copy = last_sensor_data_;
-
   PolarHistogram obstacles(num_histogram_, std::numeric_limits<double>::infinity());
 
-  for (pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud_ptr : { map_copy, last_sensor_data_copy })
+  for (pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud_ptr : { map_, last_sensor_data_ })
   {
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
 
@@ -317,7 +314,7 @@ PolarHistogram CollisionAvoidance::getObstacles(double obstacle_window) const
     box_filter.setTranslation(Eigen::Vector3f(tf_transform.transform.translation.x,
                                               tf_transform.transform.translation.y,
                                               tf_transform.transform.translation.z));
-    box_filter.setRotation(Eigen::Vector3f(roll, pitch, yaw));  // TODO: Is this correct?
+    box_filter.setRotation(Eigen::Vector3f(roll, pitch, yaw));
     box_filter.setInputCloud(cloud);
     box_filter.filter(*cloud);
 
