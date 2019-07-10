@@ -313,7 +313,7 @@ void CollisionAvoidance::publishObstacles(const PolarHistogram& obstacles) const
   for (const PolarHistogram::Vector& obstacle : obstacles)
   {
     Eigen::Vector2d p = obstacle.getPoint();
-    cloud->push_back(pcl::PointXYZ(p[0], p[1], 0));
+    cloud->points.emplace_back(p[0], p[1], 0);
   }
   obstacle_pub_.publish(cloud);
 }

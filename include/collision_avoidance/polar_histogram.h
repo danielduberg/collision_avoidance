@@ -21,17 +21,17 @@ public:
     {
     }
 
-    const double getRange() const
+    double getRange() const
     {
       return range_;
     }
 
-    const double getAngle() const
+    double getAngle() const
     {
       return angle_;
     }
 
-    const Eigen::Vector2d getPoint() const
+    Eigen::Vector2d getPoint() const
     {
       return Eigen::Vector2d(range_ * std::cos(angle_), range_ * std::sin(angle_));
     }
@@ -76,7 +76,7 @@ public:
     histogram_.reserve(num_buckets);
     for (double angle = 0; angle < 2.0 * M_PI; angle += bucket_size_)
     {
-      histogram_.push_back(Vector(angle, init_range));
+      histogram_.emplace_back(angle, init_range);
     }
   }
 
@@ -197,12 +197,12 @@ public:
 
   std::vector<Vector>::iterator begin()
   {
-    histogram_.begin();
+    return histogram_.begin();
   }
 
   std::vector<Vector>::const_iterator begin() const
   {
-    histogram_.begin();
+    return histogram_.begin();
   }
 
   std::vector<Vector>::iterator end()
