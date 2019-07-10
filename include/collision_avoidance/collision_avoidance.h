@@ -110,7 +110,7 @@ private:
 
   void adjustVelocity(geometry_msgs::TwistStamped* control, const PolarHistogram& obstacles) const;
 
-  PolarHistogram getObstacles(double obstacle_window) const;
+  PolarHistogram getObstacles(double obstacle_window, double height_diff = 0.0) const;
 
   std::pair<double, double> getDistanceToTarget(const geometry_msgs::PoseStamped& target);
 

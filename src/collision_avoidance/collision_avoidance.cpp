@@ -414,7 +414,7 @@ void CollisionAvoidance::noInput(geometry_msgs::PoseStamped setpoint) const
 
   Eigen::Vector2d goal(setpoint.pose.position.x, setpoint.pose.position.y);
 
-  PolarHistogram obstacles = getObstacles(goal.norm() + (2.0 * radius_) + min_distance_hold_);
+  PolarHistogram obstacles = getObstacles(goal.norm() + (2.0 * radius_) + min_distance_hold_, setpoint.pose.position.z);
   publishObstacles(obstacles);
 
   Eigen::Vector2d control_2d(no_input::avoidCollision(goal, obstacles, radius_, min_distance_hold_));
@@ -464,7 +464,7 @@ void CollisionAvoidance::adjustVelocity(geometry_msgs::TwistStamped* control, co
   control->twist.linear.y = updated_magnitude * std::sin(direction);
 }
 
-PolarHistogram CollisionAvoidance::getObstacles(double obstacle_window) const
+PolarHistogram CollisionAvoidance::getObstacles(double obstacle_window, double height_diff) const
 {
   PolarHistogram obstacles(num_histogram_, std::numeric_limits<double>::infinity());
 
@@ -495,8 +495,10 @@ PolarHistogram CollisionAvoidance::getObstacles(double obstacle_window) const
     tf2::getEulerYPR(tf_transform.transform.rotation, yaw, pitch, roll);
 
     pcl::CropBox<pcl::PointXYZ> box_filter;
-    box_filter.setMin(Eigen::Vector4f(-obstacle_window, -obstacle_window, -(height_ / 2.0), 0.0));
-    box_filter.setMax(Eigen::Vector4f(obstacle_window, obstacle_window, height_ / 2.0, 1.0));
+    box_filter.setMin(
+        Eigen::Vector4f(-obstacle_window, -obstacle_window, -(height_ / 2.0) - std::min(height_diff, 0.0), 0.0));
+    box_filter.setMax(
+        Eigen::Vector4f(obstacle_window, obstacle_window, (height_ / 2.0) + std::max(height_diff, 0.0), 1.0));
     box_filter.setTranslation(Eigen::Vector3f(tf_transform.transform.translation.x,
                                               tf_transform.transform.translation.y,
                                               tf_transform.transform.translation.z));
