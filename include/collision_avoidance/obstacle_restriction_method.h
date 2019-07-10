@@ -20,6 +20,7 @@ private:
   double epsilon_;
 
   ros::Publisher goal_pub_;
+  ros::Publisher subgoal_pub_;
   ros::Publisher obstacles_pub_;
 
 public:

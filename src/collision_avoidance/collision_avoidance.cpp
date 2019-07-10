@@ -22,6 +22,7 @@ CollisionAvoidance::CollisionAvoidance(ros::NodeHandle& nh, ros::NodeHandle& nh_
   , control_pub_(nh_priv.advertise<geometry_msgs::TwistStamped>("control", 10))
   , path_pub_(nh_priv.advertise<nav_msgs::Path>("path", 10))
   , obstacle_pub_(nh_priv.advertise<pcl::PointCloud<pcl::PointXYZ>>("obstacles", 10))
+  , current_setpoint_(nh_priv.advertise<geometry_msgs::PointStamped>("current_setpoint", 10))
   , as_(nh, "move_to", boost::bind(&CollisionAvoidance::goalCallback, this, _1), false)
   , tf_listener_(tf_buffer_)
   , cs_(nh_priv)
@@ -36,6 +37,136 @@ CollisionAvoidance::CollisionAvoidance(ros::NodeHandle& nh, ros::NodeHandle& nh_
 
   as_.start();
 }
+
+// void CollisionAvoidance::goalCallback(const collision_avoidance::PathControlGoal::ConstPtr& goal)
+// {
+//   if (goal->path.poses.empty())
+//   {
+//     as_.setSucceeded();
+//     return;
+//   }
+
+//   if (!map_ || !last_sensor_data_ || !odometry_)
+//   {
+//     as_.setAborted();
+//     return;
+//   }
+
+//   publish_timer_.stop();
+
+//   geometry_msgs::PoseStamped previous_target;
+//   target_.header = odometry_->header;
+//   target_.pose = odometry_->pose.pose;
+
+//   collision_avoidance::PathControlFeedback feedback;
+
+//   nav_msgs::Path path = goal->path;
+//   while (!path.poses.empty())
+//   {
+//     if (as_.isPreemptRequested() || !ros::ok())
+//     {
+//       as_.setPreempted();
+//       publish_timer_.start();
+//       return;
+//     }
+
+//     // TODO: Maybe allow it to take shortcuts?
+//     // If it is possible to move to i+1, i+2, ... right away
+//     // maybe that is better to do then?
+//     // If it has taken a shortcut and gets stuck,
+//     // it should move back and turn off the shortcut flag
+//     // to resume the original path.
+
+//     previous_target = target_;
+//     target_ = path.poses.front();
+
+//     // Makes it so previous target looks at target
+//     double dir = std::atan2(target_.pose.position.y - previous_target.pose.position.y,
+//                             target_.pose.position.x - previous_target.pose.position.x);
+//     tf2::Quaternion q;
+//     q.setRPY(0, 0, dir);
+//     tf2::convert(q, previous_target.pose.orientation);
+
+//     if (path.poses.size() > 1)
+//     {
+//       // Makes it so we look towards next setpoint
+//       double dir = std::atan2(path.poses[1].pose.position.y - target_.pose.position.y,
+//                               path.poses[1].pose.position.x - target_.pose.position.x);
+//       tf2::Quaternion q;
+//       q.setRPY(0, 0, dir);
+//       tf2::convert(q, target_.pose.orientation);
+//     }
+
+//     // TODO: Rotate towards it first
+//     std::pair<double, double> distance;
+//     ros::Rate r(frequency_);
+//     do
+//     {
+//       noInput(previous_target);
+//       distance = getDistanceToTarget(previous_target);
+
+//       // Publish remaining path
+//       nav_msgs::Path temp_path = path;
+//       temp_path.header.stamp = ros::Time::now();
+//       if (odometry_)
+//       {
+//         geometry_msgs::PoseStamped pose;
+//         pose.header = temp_path.header;
+//         pose.pose = odometry_->pose.pose;
+//         temp_path.poses.insert(temp_path.poses.begin(), pose);
+//       }
+//       path_pub_.publish(temp_path);
+
+//       ROS_WARN("%.2f > %.2f", distance.second, yaw_converged_);
+
+//       r.sleep();
+//     } while (distance.second > yaw_converged_);
+
+//     int times_backwards = 0;
+//     do
+//     {
+//       target_.header.stamp = ros::Time::now();
+
+//       times_backwards = avoidCollision(target_) ? 0 : times_backwards + 1;
+
+//       if (times_backwards > max_times_backwards_)
+//       {
+//         // We cannot move towards target because it is blocked
+//         path.poses.clear();
+//         path_pub_.publish(path);
+//         as_.setAborted();
+//         target_.header = odometry_->header;
+//         target_.pose = odometry_->pose.pose;
+//         publish_timer_.start();
+//         return;
+//       }
+
+//       distance = getDistanceToTarget(target_);
+//       feedback.targets_left = path.poses.size();
+//       feedback.distance_to_next_target = distance.first;
+//       as_.publishFeedback(feedback);
+
+//       // Publish remaining path
+//       nav_msgs::Path temp_path = path;
+//       temp_path.header.stamp = ros::Time::now();
+//       if (odometry_)
+//       {
+//         geometry_msgs::PoseStamped pose;
+//         pose.header = temp_path.header;
+//         pose.pose = odometry_->pose.pose;
+//         temp_path.poses.insert(temp_path.poses.begin(), pose);
+//       }
+//       path_pub_.publish(temp_path);
+
+//       r.sleep();
+//     } while (distance.first > distance_converged_);  // || distance.second > yaw_converged_);
+
+//     path.poses.erase(path.poses.begin());
+//   }
+
+//   as_.setSucceeded();
+//   publish_timer_.start();
+// }
 
 void CollisionAvoidance::goalCallback(const collision_avoidance::PathControlGoal::ConstPtr& goal)
 {
@@ -53,118 +184,158 @@ void CollisionAvoidance::goalCallback(const collision_avoidance::PathControlGoal
 
   publish_timer_.stop();
 
-  geometry_msgs::PoseStamped previous_target;
-  target_.header = odometry_->header;
-  target_.pose = odometry_->pose.pose;
-
   collision_avoidance::PathControlFeedback feedback;
 
   nav_msgs::Path path = goal->path;
+  std::pair<double, double> distance;
+  int times_backwards = 0;
+  ros::Rate r(frequency_);
   while (!path.poses.empty())
   {
     if (as_.isPreemptRequested() || !ros::ok())
     {
       as_.setPreempted();
+      target_.header = odometry_->header;
+      target_.pose = odometry_->pose.pose;
       publish_timer_.start();
       return;
     }
 
-    // TODO: Maybe allow it to take shortcuts?
-    // If it is possible to move to i+1, i+2, ... right away
-    // maybe that is better to do then?
-    // If it has taken a shortcut and gets stuck,
-    // it should move back and turn off the shortcut flag
-    // to resume the original path.
+    geometry_msgs::PoseStamped setpoint = getNextSetpoint(&path);
 
-    previous_target = target_;
-    target_ = path.poses.front();
+    geometry_msgs::PointStamped point;
+    point.header = setpoint.header;
+    point.header.stamp = ros::Time::now();
+    point.point = setpoint.pose.position;
+    current_setpoint_.publish(point);
 
-    // Makes it so previous target looks at target
-    double dir = std::atan2(target_.pose.position.y - previous_target.pose.position.y,
-                            target_.pose.position.x - previous_target.pose.position.x);
-    tf2::Quaternion q;
-    q.setRPY(0, 0, dir);
-    tf2::convert(q, previous_target.pose.orientation);
+    times_backwards = avoidCollision(setpoint) ? 0 : times_backwards + 1;
 
-    if (path.poses.size() > 1)
+    if (times_backwards > max_times_backwards_)
     {
-      // Makes it so we look towards next setpoint
-      double dir = std::atan2(path.poses[1].pose.position.y - target_.pose.position.y,
-                              path.poses[1].pose.position.x - target_.pose.position.x);
-      tf2::Quaternion q;
-      q.setRPY(0, 0, dir);
-      tf2::convert(q, target_.pose.orientation);
+      // We cannot move towards target because it is blocked
+      path.poses.clear();
+      path_pub_.publish(path);
+      as_.setAborted();
+      target_.header = odometry_->header;
+      target_.pose = odometry_->pose.pose;
+      publish_timer_.start();
+      return;
     }
 
-    // TODO: Rotate towards it first
-    std::pair<double, double> distance;
-    ros::Rate r(frequency_);
-    do
+    // Publish remaining path
+    nav_msgs::Path temp_path = path;
+    temp_path.header.stamp = ros::Time::now();
+    if (odometry_)
     {
-      noInput(previous_target);
-      distance = getDistanceToTarget(previous_target);
+      geometry_msgs::PoseStamped pose;
+      pose.header = temp_path.header;
+      pose.pose = odometry_->pose.pose;
+      temp_path.poses.insert(temp_path.poses.begin(), pose);
+    }
+    path_pub_.publish(temp_path);
 
-      // Publish remaining path
-      nav_msgs::Path temp_path = path;
-      temp_path.header.stamp = ros::Time::now();
-      if (odometry_)
-      {
-        geometry_msgs::PoseStamped pose;
-        pose.header = temp_path.header;
-        pose.pose = odometry_->pose.pose;
-        temp_path.poses.insert(temp_path.poses.begin(), pose);
-      }
-      path_pub_.publish(temp_path);
+    distance = getDistanceToTarget(path.poses.front());
+    feedback.targets_left = path.poses.size();
+    feedback.distance_to_next_target = distance.first;
+    as_.publishFeedback(feedback);
 
-      ROS_WARN("%.2f > %.2f", distance.second, yaw_converged_);
-
-      r.sleep();
-    } while (distance.second > yaw_converged_);
-
-    int times_backwards = 0;
-    do
-    {
-      target_.header.stamp = ros::Time::now();
-
-      times_backwards = avoidCollision(target_) ? 0 : times_backwards + 1;
-
-      if (times_backwards > max_times_backwards_)
-      {
-        // We cannot move towards target because it is blocked
-        path.poses.clear();
-        path_pub_.publish(path);
-        as_.setAborted();
-        target_.header = odometry_->header;
-        target_.pose = odometry_->pose.pose;
-        publish_timer_.start();
-        return;
-      }
-
-      distance = getDistanceToTarget(target_);
-      feedback.targets_left = path.poses.size();
-      feedback.distance_to_next_target = distance.first;
-      as_.publishFeedback(feedback);
-
-      // Publish remaining path
-      nav_msgs::Path temp_path = path;
-      temp_path.header.stamp = ros::Time::now();
-      if (odometry_)
-      {
-        geometry_msgs::PoseStamped pose;
-        pose.header = temp_path.header;
-        pose.pose = odometry_->pose.pose;
-        temp_path.poses.insert(temp_path.poses.begin(), pose);
-      }
-      path_pub_.publish(temp_path);
-
-      r.sleep();
-    } while (distance.first > distance_converged_);  // || distance.second > yaw_converged_);
-
-    path.poses.erase(path.poses.begin());
+    r.sleep();
   }
 
   as_.setSucceeded();
+  target_.header = odometry_->header;
+  target_.pose = odometry_->pose.pose;
   publish_timer_.start();
+}
+
+geometry_msgs::PoseStamped CollisionAvoidance::getNextSetpoint(nav_msgs::Path* path)
+{
+  if (path->poses.empty())
+  {
+    return geometry_msgs::PoseStamped();  // TODO: What?
+  }
+
+  // TODO: Fix to same frame
+  // try
+  // {
+  //   geometry_msgs::TransformStamped transform =
+  //       tf_buffer_.lookupTransform(robot_frame_id_, setpoint.header.frame_id, ros::Time(0));
+  //   tf2::doTransform(setpoint, setpoint, transform);
+  // }
+  // catch (tf2::TransformException& ex)
+  // {
+  //   ROS_WARN_THROTTLE(1, "Avoid collision: %s", ex.what());
+  //   noInput(setpoint);
+  //   return true;  // TODO: What should it return?
+  // }
+
+  Eigen::Vector3d current(odometry_->pose.pose.position.x, odometry_->pose.pose.position.y,
+                          odometry_->pose.pose.position.z);
+  Eigen::Vector3d setpoint(path->poses.front().pose.position.x, path->poses.front().pose.position.y,
+                           path->poses.front().pose.position.z);
+
+  double distance_to_setpoint = (setpoint - current).norm();
+  if (distance_to_setpoint > look_ahead_distance_ || path->poses.size() == 1)
+  {
+    if (path->poses.size() == 1 && distance_to_setpoint < distance_converged_)
+    {
+      geometry_msgs::PoseStamped temp = path->poses.front();
+      path->poses.erase(path->poses.begin());
+
+      return temp;
+    }
+    else
+    {
+      return path->poses.front();
+    }
+  }
+
+  double distance_left = look_ahead_distance_ - distance_to_setpoint;
+
+  size_t index = 1;
+  if (distance_to_setpoint < look_ahead_distance_ / 2.0)
+  {
+    path->poses.erase(path->poses.begin());
+    index = 0;
+  }
+
+  for (size_t i = index; i < path->poses.size() && distance_left > 0; ++i)
+  {
+    Eigen::Vector3d next_setpoint(path->poses[i].pose.position.x, path->poses[i].pose.position.y,
+                                  path->poses[i].pose.position.z);
+
+    distance_left -= (next_setpoint - setpoint).norm();
+    setpoint = next_setpoint;
+
+    index = i;  // TODO: Fix
+  }
+
+  if (distance_left >= 0)
+  {
+    return path->poses[index];
+  }
+
+  Eigen::Vector3d next(path->poses[index].pose.position.x, path->poses[index].pose.position.y,
+                       path->poses[index].pose.position.z);
+  Eigen::Vector3d previous(path->poses[index - 1].pose.position.x, path->poses[index - 1].pose.position.y,
+                           path->poses[index - 1].pose.position.z);
+
+  double distance = (next - previous).norm();
+  double direction = std::atan2(next[1] - previous[1], next[0] - previous[0]);
+
+  double new_distance = distance + distance_left;
+
+  Eigen::Vector3d temp(new_distance * std::cos(direction), new_distance * std::sin(direction), 0);  // TODO: Fix Z
+
+  temp += previous;
+
+  geometry_msgs::PoseStamped new_setpoint = path->poses[index];
+  new_setpoint.pose.position.x = temp[0];
+  new_setpoint.pose.position.y = temp[1];
+  new_setpoint.pose.position.z = temp[2];
+
+  return new_setpoint;
 }
 
 bool CollisionAvoidance::avoidCollision(geometry_msgs::PoseStamped setpoint)
@@ -188,25 +359,24 @@ bool CollisionAvoidance::avoidCollision(geometry_msgs::PoseStamped setpoint)
   PolarHistogram obstacles = getObstacles(goal.norm() + (2.0 * radius_) + min_distance_hold_);
   publishObstacles(obstacles);
 
-  // double yaw = std::atan2(goal[1], goal[0]);
-
-  bool valid = true;
-
   // Is this correct?
   goal[0] -= odometry_->twist.twist.linear.x;
   goal[1] -= odometry_->twist.twist.linear.y;
 
   control_2d = orm_.avoidCollision(goal, obstacles, robot_frame_id_);
 
+  double yaw = std::atan2(control_2d[1], control_2d[0]);
+
   double direction_change =
       std::fabs(std::remainder(std::atan2(goal[1], goal[0]) - std::atan2(control_2d[1], control_2d[0]), 2 * M_PI));
 
-  if (control_2d.isZero() || direction_change > max_direction_change_)
+  bool valid = (!control_2d.isZero() && direction_change <= max_direction_change_) || std::abs(yaw) > yaw_converged_;
+
+  if (!valid || std::abs(yaw) > yaw_converged_)
   {
     goal[0] += odometry_->twist.twist.linear.x;
     goal[1] += odometry_->twist.twist.linear.y;
     control_2d = no_input::avoidCollision(Eigen::Vector2d(0, 0), obstacles, radius_, min_distance_hold_);
-    valid = false;
   }
 
   ROS_INFO("Direction change: %.2f (deg)", direction_change * 180.0 / M_PI);
@@ -220,8 +390,7 @@ bool CollisionAvoidance::avoidCollision(geometry_msgs::PoseStamped setpoint)
   control.twist.linear.x = magnitude * std::cos(direction);
   control.twist.linear.y = magnitude * std::sin(direction);
   control.twist.linear.z = std::clamp(setpoint.pose.position.z, -max_z_vel_, max_z_vel_);
-  control.twist.angular.z =
-      std::clamp(std::atan2(control.twist.linear.y, control.twist.linear.x), -max_yaw_rate_, max_yaw_rate_);
+  control.twist.angular.z = std::clamp(yaw, -max_yaw_rate_, max_yaw_rate_);
 
   adjustVelocity(&control, obstacles);
   control_pub_.publish(control);
@@ -424,6 +593,8 @@ void CollisionAvoidance::configCallback(const collision_avoidance::CollisionAvoi
   max_direction_change_ = config.max_direction_change * M_PI / 180.0;
 
   leaf_size_ = config.leaf_size;
+
+  look_ahead_distance_ = config.look_ahead_distance;
 
   orm_.setRadius(radius_);
   orm_.setSecurityDistance(config.security_distance);

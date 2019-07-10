@@ -38,6 +38,7 @@ private:
   ros::Publisher control_pub_;
   ros::Publisher path_pub_;
   ros::Publisher obstacle_pub_;
+  ros::Publisher current_setpoint_;
 
   // Action servers
   actionlib::SimpleActionServer<collision_avoidance::PathControlAction> as_;
@@ -93,11 +94,15 @@ private:
 
   double leaf_size_;
 
+  double look_ahead_distance_;
+
 public:
   CollisionAvoidance(ros::NodeHandle& nh, ros::NodeHandle& nh_priv);
 
 private:
   void goalCallback(const collision_avoidance::PathControlGoal::ConstPtr& goal);
+
+  geometry_msgs::PoseStamped getNextSetpoint(nav_msgs::Path* path);
 
   bool avoidCollision(geometry_msgs::PoseStamped setpoint);
 

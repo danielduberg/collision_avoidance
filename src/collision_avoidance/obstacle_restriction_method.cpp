@@ -23,7 +23,8 @@ ORM::ORM(ros::NodeHandle& nh, double radius, double security_distance, double ep
   : radius_(radius)
   , security_distance_(security_distance)
   , epsilon_(epsilon)
-  , goal_pub_(nh.advertise<geometry_msgs::PointStamped>("subgoal", 10))
+  , goal_pub_(nh.advertise<geometry_msgs::PointStamped>("goal", 10))
+  , subgoal_pub_(nh.advertise<geometry_msgs::PointStamped>("subgoal", 10))
   , obstacles_pub_(nh.advertise<visualization_msgs::MarkerArray>("points_of_interest", 10))
 {
 }
@@ -33,15 +34,15 @@ Eigen::Vector2d ORM::avoidCollision(const Eigen::Vector2d& goal, const PolarHist
 {
   Eigen::Vector2d subgoal(subgoalSelector(goal, obstacles));
 
-  if ("" != frame_id && goal_pub_.getNumSubscribers() > 0)
+  if ("" != frame_id && subgoal_pub_.getNumSubscribers() > 0)
   {
-    geometry_msgs::PointStamped goal_point;
-    goal_point.header.frame_id = frame_id;
-    goal_point.header.stamp = ros::Time::now();
-    goal_point.point.x = subgoal[0];
-    goal_point.point.y = subgoal[1];
-    goal_point.point.z = 0;
-    goal_pub_.publish(goal_point);
+    geometry_msgs::PointStamped subgoal_point;
+    subgoal_point.header.frame_id = frame_id;
+    subgoal_point.header.stamp = ros::Time::now();
+    subgoal_point.point.x = subgoal[0];
+    subgoal_point.point.y = subgoal[1];
+    subgoal_point.point.z = 0;
+    subgoal_pub_.publish(subgoal_point);
   }
 
   if (subgoal.isZero())
@@ -49,7 +50,20 @@ Eigen::Vector2d ORM::avoidCollision(const Eigen::Vector2d& goal, const PolarHist
     return subgoal;
   }
 
-  return motionComputation(subgoal, obstacles);
+  Eigen::Vector2d final_goal(motionComputation(subgoal, obstacles));
+
+  if ("" != frame_id && goal_pub_.getNumSubscribers() > 0)
+  {
+    geometry_msgs::PointStamped goal_point;
+    goal_point.header.frame_id = frame_id;
+    goal_point.header.stamp = ros::Time::now();
+    goal_point.point.x = final_goal[0];
+    goal_point.point.y = final_goal[1];
+    goal_point.point.z = 0;
+    goal_pub_.publish(goal_point);
+  }
+
+  return final_goal;
 }
 
 Eigen::Vector2d ORM::subgoalSelector(const Eigen::Vector2d& goal, const PolarHistogram& obstacles)
