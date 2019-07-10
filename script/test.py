@@ -38,6 +38,11 @@ def pose_callback(pose):
 
     current_pose = pose
 
+    if len(path.poses) > 0:
+        path.poses.insert(0, pose)
+        pub.publish(path)
+        path.poses.remove(pose)
+
 
 def callback(pose):
     path.header = pose.header
