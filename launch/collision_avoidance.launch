@@ -43,7 +43,7 @@
     <param name="max_times_backwards_total" value="1000" />
     <param name="max_direction_change" value="60" />
 
-    <param name="look_ahead_distance" value="3.0" />
+    <param name="look_ahead_distance" value="4.0" />
   </node>
 
   <!-- <node pkg="nodelet" type="nodelet" name="laserscan_to_pointcloud_nodelet" args="load laserscan_to_pointcloud/LTP collision_avoidance_manager" output="screen">
