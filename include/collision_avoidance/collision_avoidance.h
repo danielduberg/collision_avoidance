@@ -29,10 +29,9 @@ class CollisionAvoidance
 {
 private:
   // Subscribers
-  ros::Subscriber map_sub_;
+  std::vector<ros::Subscriber> cloud_sub_;
   ros::Subscriber sensor_sub_;
   ros::Subscriber odometry_sub_;
-  ros::Subscriber imu_sub_;
 
   // Publishers
   ros::Publisher control_pub_;
@@ -52,10 +51,8 @@ private:
   dynamic_reconfigure::Server<collision_avoidance::CollisionAvoidanceConfig>::CallbackType f_;
 
   // Stored data
-  pcl::PointCloud<pcl::PointXYZ>::ConstPtr map_;
-  pcl::PointCloud<pcl::PointXYZ>::ConstPtr last_sensor_data_;
+  std::vector<pcl::PointCloud<pcl::PointXYZ>::ConstPtr> clouds_;
   nav_msgs::Odometry::ConstPtr odometry_;
-  sensor_msgs::Imu::ConstPtr imu_;
 
   // Current target
   geometry_msgs::PoseStamped target_;
@@ -95,6 +92,9 @@ private:
   double leaf_size_;
 
   double look_ahead_distance_;
+  bool look_forward_;
+  bool move_while_yawing_;
+  bool yaw_each_setpoint_;
 
 public:
   CollisionAvoidance(ros::NodeHandle& nh, ros::NodeHandle& nh_priv);
@@ -102,7 +102,14 @@ public:
 private:
   void goalCallback(const collision_avoidance::PathControlGoal::ConstPtr& goal);
 
-  geometry_msgs::PoseStamped getNextSetpoint(nav_msgs::Path* path);
+  geometry_msgs::PoseStamped getNextSetpoint(nav_msgs::Path* path) const;
+
+  geometry_msgs::Pose interpolate(const geometry_msgs::Pose& start, const geometry_msgs::Pose& end, double t) const;
+
+  geometry_msgs::Point lerp(const geometry_msgs::Point& start, const geometry_msgs::Point& end, double t) const;
+
+  geometry_msgs::Quaternion slerp(const geometry_msgs::Quaternion& start, const geometry_msgs::Quaternion& end,
+                                  double t) const;
 
   bool avoidCollision(geometry_msgs::PoseStamped setpoint);
 
@@ -118,21 +125,14 @@ private:
 
   void publishObstacles(const PolarHistogram& obstacles) const;
 
-  void mapCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& map)
+  void cloudCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& cloud, int index)
   {
-    map_ = map;
+    clouds_[index] = cloud;
   }
-  void sensorCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& data)
-  {
-    last_sensor_data_ = data;
-  }
+
   void odometryCallback(const nav_msgs::Odometry::ConstPtr& odometry)
   {
     odometry_ = odometry;
-  }
-  void imuCallback(const sensor_msgs::Imu::ConstPtr& imu)
-  {
-    imu_ = imu;
   }
 
   void configCallback(const collision_avoidance::CollisionAvoidanceConfig& config, uint32_t level);

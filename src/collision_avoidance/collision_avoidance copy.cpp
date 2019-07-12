@@ -129,14 +129,72 @@ geometry_msgs::PoseStamped CollisionAvoidance::getNextSetpoint(nav_msgs::Path* p
     return geometry_msgs::PoseStamped();  // TODO: What?
   }
 
+  if (path->poses.size() == 1)
+  {
+    try
+    {
+      geometry_msgs::TransformStamped transform =
+          tf_buffer_.lookupTransform(robot_frame_id_, path->poses.front().header.frame_id, ros::Time(0));
+      geometry_msgs::PoseStamped transformed_pose;
+      tf2::doTransform(path->poses.front(), transformed_pose, transform);
+
+      double distance = Eigen::Vector3d(transformed_pose.pose.position.x, transformed_pose.pose.position.y,
+                                        transformed_pose.pose.position.z)
+                            .norm();
+
+      if (distance_converged_ >= distance)
+      {
+        geometry_msgs::PoseStamped temp = path->poses.front();
+        path->poses.erase(path->poses.begin());
+        return temp;
+      }
+      geometry_msgs::PoseStamped pose;
+      pose.header.frame_id = robot_frame_id_;
+      pose.header.stamp = ros::Time::now();
+      pose.pose.orientation.w = 1;
+      pose.pose = interpolate(pose.pose, transformed_pose.pose, std::min(1.0, look_ahead_distance_ / distance));
+      return pose;
+    }
+    catch (tf2::TransformException& ex)
+    {
+      ROS_WARN_THROTTLE(1, "Get next setpoint: %s", ex.what());
+      return geometry_msgs::PoseStamped();  // TODO: What?
+    }
+  }
+
   geometry_msgs::TransformStamped transform;
-  geometry_msgs::PoseStamped transformed_pose;
   double distance_left = look_ahead_distance_;
 
+  geometry_msgs::PoseStamped last_pose;
+  geometry_msgs::PoseStamped current_pose;
+  Eigen::Vector3d last_position;
+  Eigen::Vector3d current_position;
+  last_pose.header.frame_id = robot_frame_id_;
+  last_pose.header.stamp = ros::Time::now();
+  last_pose.pose.orientation.w = 1;
+
+  size_t index;
   try
   {
-    transform = tf_buffer_.lookupTransform(robot_frame_id_, path->poses.front().header.frame_id, ros::Time(0));
-    tf2::doTransform(path->poses.front(), transformed_pose, transform);
+    for (index = 0; index < path->poses.size(); ++index)
+    {
+      transform = tf_buffer_.lookupTransform(robot_frame_id_, path->poses[index].header.frame_id, ros::Time(0));
+      tf2::doTransform(path->poses[index], current_pose, transform);
+
+      current_position[0] = current_pose.pose.position.x;
+      current_position[1] = current_pose.pose.position.y;
+      current_position[2] = current_pose.pose.position.z;
+
+      distance_left -= (current_position - last_position).norm();
+
+      if (0 > distance_left)
+      {
+        break;
+      }
+
+      last_pose = current_pose;
+      last_position = current_position;
+    }
   }
   catch (tf2::TransformException& ex)
   {
@@ -144,73 +202,33 @@ geometry_msgs::PoseStamped CollisionAvoidance::getNextSetpoint(nav_msgs::Path* p
     return geometry_msgs::PoseStamped();  // TODO: What?
   }
 
-  double distance = Eigen::Vector3d(transformed_pose.pose.position.x, transformed_pose.pose.position.y,
-                                    transformed_pose.pose.position.z)
-                        .norm();
+  // Interpolate
+  double interpolation_ratio = std::min(1.0, (distance_left + (current_position - last_position).norm()) /
+                                                 (current_position - last_position).norm());
+  last_pose.pose = interpolate(last_pose.pose, current_pose.pose, interpolation_ratio);
 
-  if (path->poses.size() == 1)
+  // Transform into previous frame
+  transform = tf_buffer_.lookupTransform(path->poses.front().header.frame_id, last_pose.header.frame_id, ros::Time(0));
+  tf2::doTransform(last_pose, last_pose, transform);
+
+  // Remove all points up to index
+  for (; 0 < index; --index)
   {
-    geometry_msgs::PoseStamped temp = path->poses.front();
-    if (distance < distance_converged_)
+    if (path->poses.size() == 1)
     {
-      path->poses.erase(path->poses.begin());
+      break;
     }
-    return temp;
-  }
-  else if (look_ahead_distance_ / 2.0 >= distance)
-  {
     path->poses.erase(path->poses.begin());
-    distance_left -= distance;
   }
-  else if (look_ahead_distance_ < distance)
+  // path->poses.erase(path->poses.begin(), path->poses.begin() + std::min(index, path->poses.size() - 1));
+
+  // Insert interpolated pose
+  if (0 > distance_left)
   {
-    return path->poses.front();
+    path->poses.insert(path->poses.begin(), last_pose);
   }
 
-  ROS_INFO("%.2f >= %.2f", look_ahead_distance_ / 2.0, distance);
-
-  geometry_msgs::PoseStamped last_pose;
-  last_pose.header.frame_id = robot_frame_id_;
-  last_pose.header.stamp = ros::Time::now();
-  last_pose.pose.orientation.w = 1;
-  try
-  {
-    Eigen::Vector3d last_position(last_pose.pose.position.x, last_pose.pose.position.y, last_pose.pose.position.z);
-    for (const geometry_msgs::PoseStamped& pose : path->poses)
-    {
-      transform = tf_buffer_.lookupTransform(robot_frame_id_, pose.header.frame_id, ros::Time(0));
-      tf2::doTransform(pose, transformed_pose, transform);
-
-      Eigen::Vector3d position(transformed_pose.pose.position.x, transformed_pose.pose.position.y,
-                               transformed_pose.pose.position.z);
-
-      double distance = (position - last_position).norm();
-
-      if (distance > distance_left)
-      {
-        // Return interpolated between pose and last_pose
-        last_pose.header.frame_id = robot_frame_id_;
-        last_pose.header.stamp = ros::Time::now();
-        last_pose.pose = interpolate(last_pose.pose, transformed_pose.pose, distance_left / distance);
-        ROS_WARN("%.2f",
-                 (Eigen::Vector3d(last_pose.pose.position.x, last_pose.pose.position.y, last_pose.pose.position.z) -
-                  last_position)
-                     .norm());
-        return last_pose;
-      }
-
-      distance_left -= distance;
-      last_pose = transformed_pose;
-      last_position = position;
-    }
-  }
-  catch (tf2::TransformException& ex)
-  {
-    ROS_WARN_THROTTLE(1, "Get next setpoint: %s", ex.what());
-    return last_pose;
-  }
-
-  return path->poses.back();
+  return last_pose;
 }
 
 geometry_msgs::Pose CollisionAvoidance::interpolate(const geometry_msgs::Pose& start, const geometry_msgs::Pose& end,
@@ -286,7 +304,7 @@ bool CollisionAvoidance::avoidCollision(geometry_msgs::PoseStamped setpoint)
     control_2d = no_input::avoidCollision(Eigen::Vector2d(0, 0), obstacles, radius_, min_distance_hold_);
   }
 
-  // ROS_INFO("Direction change: %.2f (deg)", direction_change * 180.0 / M_PI);
+  ROS_INFO("Direction change: %.2f (deg)", direction_change * 180.0 / M_PI);
 
   double direction = std::atan2(control_2d[1], control_2d[0]);
   double magnitude = std::clamp(control_2d.norm(), -max_xy_vel_, max_xy_vel_);

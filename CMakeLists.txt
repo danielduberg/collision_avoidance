@@ -115,7 +115,7 @@ generate_dynamic_reconfigure_options(
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   INCLUDE_DIRS include
-  LIBRARIES collision_avoidance laserscan_to_pointcloud_nodelet
+  LIBRARIES collision_avoidance_nodelet laserscan_to_pointcloud_nodelet
   CATKIN_DEPENDS dynamic_reconfigure nodelet pcl_conversions pcl_ros roscpp rospy std_msgs
 #  DEPENDS system_lib
 )

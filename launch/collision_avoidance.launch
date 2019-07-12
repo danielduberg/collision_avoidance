@@ -9,16 +9,17 @@
   <node pkg="nodelet" type="nodelet" name="collision_avoidance_nodelet" args="load collision_avoidance/CollisionAvoidanceNodelet collision_avoidance_manager" output="screen">
     <rosparam file="$(arg collision_avoidance_config_file)" command="load" />
 
-    <remap from="map" to="/octomap_point_cloud_centers" />
-    <remap from="sensor" to="/camera/depth/points" />
+    <remap from="cloud" to="/octomap_point_cloud_centers" />
+    <remap from="cloud_1" to="/camera/depth/points" />
     <remap from="odometry" to="/mavros/local_position/odom" />
-    <remap from="imu" to="/mavros/imu/data" />
     <remap from="~/control" to="/mavros/setpoint_velocity/cmd_vel" />
     <remap from="~/path" to="~/path" />
     <remap from="~/obstacles" to="~/obstacles" />
     <remap from="move_to" to="move_to2" />
 
-    <param name="robot_frame_id" value="base_link" />
+    <param name="num_cloud_topics" value="2" />
+
+    <param name="robot_frame_id" value="base_stabilized_link" />
 
     <param name="distance_converged" value="0.4" />
     <param name="yaw_converged" value="0.5" />
@@ -44,6 +45,8 @@
     <param name="max_direction_change" value="60" />
 
     <param name="look_ahead_distance" value="4.0" />
+    <param name="look_forward" value="true" />
+    <param name="move_while_yawing" value="false" />
   </node>
 
   <!-- <node pkg="nodelet" type="nodelet" name="laserscan_to_pointcloud_nodelet" args="load laserscan_to_pointcloud/LTP collision_avoidance_manager" output="screen">
