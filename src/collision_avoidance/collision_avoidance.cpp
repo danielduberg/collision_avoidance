@@ -140,7 +140,7 @@ geometry_msgs::PoseStamped CollisionAvoidance::getNextSetpoint(nav_msgs::Path* p
   }
   catch (tf2::TransformException& ex)
   {
-    ROS_WARN_THROTTLE(1, "Get next setpoint: %s", ex.what());
+    // ROS_WARN_THROTTLE(1, "Get next setpoint: %s", ex.what());
     return geometry_msgs::PoseStamped();  // TODO: What?
   }
 
@@ -167,7 +167,7 @@ geometry_msgs::PoseStamped CollisionAvoidance::getNextSetpoint(nav_msgs::Path* p
     return path->poses.front();
   }
 
-  ROS_INFO("%.2f >= %.2f", look_ahead_distance_ / 2.0, distance);
+  // ROS_INFO("%.2f >= %.2f", look_ahead_distance_ / 2.0, distance);
 
   geometry_msgs::PoseStamped last_pose;
   last_pose.header.frame_id = robot_frame_id_;
@@ -192,10 +192,10 @@ geometry_msgs::PoseStamped CollisionAvoidance::getNextSetpoint(nav_msgs::Path* p
         last_pose.header.frame_id = robot_frame_id_;
         last_pose.header.stamp = ros::Time::now();
         last_pose.pose = interpolate(last_pose.pose, transformed_pose.pose, distance_left / distance);
-        ROS_WARN("%.2f",
-                 (Eigen::Vector3d(last_pose.pose.position.x, last_pose.pose.position.y, last_pose.pose.position.z) -
-                  last_position)
-                     .norm());
+        // ROS_WARN("%.2f",
+        //          (Eigen::Vector3d(last_pose.pose.position.x, last_pose.pose.position.y, last_pose.pose.position.z) -
+        //           last_position)
+        //              .norm());
         return last_pose;
       }
 
