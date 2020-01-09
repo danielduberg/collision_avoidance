@@ -102,7 +102,7 @@ public:
 private:
   void goalCallback(const collision_avoidance::PathControlGoal::ConstPtr& goal);
 
-  geometry_msgs::PoseStamped getNextSetpoint(nav_msgs::Path* path) const;
+  geometry_msgs::PoseStamped getNextSetpoint(nav_msgs::Path* path, bool go_to_every_target = false) const;
 
   geometry_msgs::Pose interpolate(const geometry_msgs::Pose& start, const geometry_msgs::Pose& end, double t) const;
 
