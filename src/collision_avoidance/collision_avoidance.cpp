@@ -93,7 +93,7 @@ void CollisionAvoidance::goalCallback(
 
 		times_backwards = avoidCollision(setpoint) ? 0 : times_backwards + 1;
 
-		if (times_backwards > max_times_backwards_)
+		if (times_backwards > goal->max_times_backwards)
 		{
 			// We cannot move towards target because it is blocked
 			path.poses.clear();
@@ -317,8 +317,14 @@ bool CollisionAvoidance::avoidCollision(geometry_msgs::PoseStamped setpoint)
 
 	control_2d = orm_.avoidCollision(goal, obstacles, robot_frame_id_);
 
-	double yaw = look_forward_ ? std::atan2(control_2d[1], control_2d[0]) :
-															 tf2::getYaw(setpoint.pose.orientation);
+	double distance_left =
+			Eigen::Vector3d(setpoint.pose.position.x, setpoint.pose.position.y,
+											setpoint.pose.position.z)
+					.norm();
+
+	double yaw = (look_forward_ && distance_left > distance_converged_) ?
+									 std::atan2(control_2d[1], control_2d[0]) :
+									 tf2::getYaw(setpoint.pose.orientation);
 
 	double direction_change = std::fabs(std::remainder(
 			std::atan2(goal[1], goal[0]) - std::atan2(control_2d[1], control_2d[0]), 2 * M_PI));
