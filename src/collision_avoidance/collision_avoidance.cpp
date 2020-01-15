@@ -137,7 +137,6 @@ CollisionAvoidance::getNextSetpoint(nav_msgs::Path* path, bool go_to_every_targe
 
 	geometry_msgs::TransformStamped transform;
 	geometry_msgs::PoseStamped transformed_pose;
-	double distance_left = look_ahead_distance_;
 
 	try
 	{
@@ -542,13 +541,13 @@ CollisionAvoidance::getDistanceToTarget(const geometry_msgs::PoseStamped& target
 	return std::pair(distance, yaw_diff);
 }
 
-void CollisionAvoidance::timerCallback(const ros::TimerEvent& event)
+void CollisionAvoidance::timerCallback(const ros::TimerEvent&)
 {
 	noInput(target_);
 }
 
 void CollisionAvoidance::configCallback(
-		const collision_avoidance::CollisionAvoidanceConfig& config, uint32_t level)
+		const collision_avoidance::CollisionAvoidanceConfig& config, uint32_t)
 {
 	distance_converged_ = config.distance_converged;
 	yaw_converged_ = config.yaw_converged;

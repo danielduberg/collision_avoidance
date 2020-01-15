@@ -36,7 +36,7 @@ public:
       return Eigen::Vector2d(range_ * std::cos(angle_), range_ * std::sin(angle_));
     }
 
-    double setRange(double range)
+    void setRange(double range)
     {
       range_ = range;
     }
