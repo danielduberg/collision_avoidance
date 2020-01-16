@@ -111,7 +111,7 @@ private:
   geometry_msgs::Quaternion slerp(const geometry_msgs::Quaternion& start, const geometry_msgs::Quaternion& end,
                                   double t) const;
 
-  bool avoidCollision(geometry_msgs::PoseStamped setpoint);
+  bool avoidCollision(geometry_msgs::PoseStamped setpoint, bool do_avoidance = true);
 
   void noInput(geometry_msgs::PoseStamped setpoint) const;
 

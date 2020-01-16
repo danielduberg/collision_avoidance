@@ -91,7 +91,7 @@ void CollisionAvoidance::goalCallback(
 		point.point = setpoint.pose.position;
 		current_setpoint_.publish(point);
 
-		times_backwards = avoidCollision(setpoint) ? 0 : times_backwards + 1;
+		times_backwards = avoidCollision(setpoint, goal->do_avoidance) ? 0 : times_backwards + 1;
 
 		if (times_backwards > goal->max_times_backwards)
 		{
@@ -288,7 +288,8 @@ CollisionAvoidance::slerp(const geometry_msgs::Quaternion& start,
 	return result;
 }
 
-bool CollisionAvoidance::avoidCollision(geometry_msgs::PoseStamped setpoint)
+bool CollisionAvoidance::avoidCollision(geometry_msgs::PoseStamped setpoint,
+																				bool do_avoidance)
 {
 	try
 	{
@@ -314,7 +315,14 @@ bool CollisionAvoidance::avoidCollision(geometry_msgs::PoseStamped setpoint)
 	goal[0] -= odometry_->twist.twist.linear.x;
 	goal[1] -= odometry_->twist.twist.linear.y;
 
-	control_2d = orm_.avoidCollision(goal, obstacles, robot_frame_id_);
+	if (do_avoidance)
+	{
+		control_2d = orm_.avoidCollision(goal, obstacles, robot_frame_id_);
+	}
+	else
+	{
+		control_2d = goal;
+	}
 
 	double distance_left =
 			Eigen::Vector3d(setpoint.pose.position.x, setpoint.pose.position.y,
@@ -335,8 +343,15 @@ bool CollisionAvoidance::avoidCollision(geometry_msgs::PoseStamped setpoint)
 	{
 		goal[0] += odometry_->twist.twist.linear.x;
 		goal[1] += odometry_->twist.twist.linear.y;
-		control_2d = no_input::avoidCollision(Eigen::Vector2d(0, 0), obstacles, radius_,
-																					min_distance_hold_);
+		if (do_avoidance)
+		{
+			control_2d = no_input::avoidCollision(Eigen::Vector2d(0, 0), obstacles, radius_,
+																						min_distance_hold_);
+		}
+		else
+		{
+			control_2d = goal;
+		}
 	}
 
 	// ROS_INFO("Direction change: %.2f (deg)", direction_change * 180.0 / M_PI);
