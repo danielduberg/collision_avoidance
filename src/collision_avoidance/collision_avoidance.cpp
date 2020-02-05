@@ -10,6 +10,7 @@
 #include <pcl/filters/crop_box.h>
 #include <pcl/filters/passthrough.h>
 #include <pcl/filters/voxel_grid.h>
+#include <pcl/kdtree/kdtree_flann.h>
 #include <pcl/range_image/range_image.h>
 
 namespace collision_avoidance
@@ -91,7 +92,8 @@ void CollisionAvoidance::goalCallback(
 		point.point = setpoint.pose.position;
 		current_setpoint_.publish(point);
 
-		times_backwards = avoidCollision(setpoint, goal->do_avoidance) ? 0 : times_backwards + 1;
+		times_backwards =
+				avoidCollision(setpoint, goal->do_avoidance) ? 0 : times_backwards + 1;
 
 		if (times_backwards > goal->max_times_backwards)
 		{
@@ -190,19 +192,24 @@ CollisionAvoidance::getNextSetpoint(nav_msgs::Path* path, bool go_to_every_targe
 			return temp;
 		}
 
-		double distance_left = look_ahead_distance_;
+		double look_ahead_distance =
+				std::min(look_ahead_distance_,
+								 look_ahead_distance_);  // getDistanceClosestObstacle(look_ahead_distance_,
+																				 // 0) / 2.0);  // TODO: Set to good values
 
-		if (look_ahead_distance_ / 2.0 >= distance)
+		double distance_left = look_ahead_distance;
+
+		if (look_ahead_distance / 2.0 >= distance)
 		{
 			path->poses.erase(path->poses.begin());
 			distance_left -= distance;
 		}
-		else if (look_ahead_distance_ < distance)
+		else if (look_ahead_distance < distance)
 		{
 			return path->poses.front();
 		}
 
-		// ROS_INFO("%.2f >= %.2f", look_ahead_distance_ / 2.0, distance);
+		// ROS_INFO("%.2f >= %.2f", look_ahead_distance / 2.0, distance);
 
 		geometry_msgs::PoseStamped last_pose;
 		last_pose.header.frame_id = robot_frame_id_;
@@ -252,6 +259,81 @@ CollisionAvoidance::getNextSetpoint(nav_msgs::Path* path, bool go_to_every_targe
 
 		return path->poses.back();
 	}
+}
+
+double CollisionAvoidance::getDistanceClosestObstacle(double obstacle_window,
+																											double height_diff) const
+{
+	double closest_distance = std::numeric_limits<double>::max();
+
+	for (pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud_ptr : clouds_)
+	{
+		if (!cloud_ptr || cloud_ptr->points.empty())
+		{
+			continue;
+		}
+
+		pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
+
+		std::vector<int> indices;
+		pcl::removeNaNFromPointCloud(*cloud_ptr, *cloud, indices);
+
+		geometry_msgs::TransformStamped tf_transform;
+		try
+		{
+			tf_transform = tf_buffer_.lookupTransform(cloud_ptr->header.frame_id,
+																								robot_frame_id_, ros::Time(0));
+		}
+		catch (tf2::TransformException& ex)
+		{
+			ROS_WARN_THROTTLE(1, "Get distance closest obstacle: %s", ex.what());
+			continue;  // TODO: Fix
+		}
+
+		double yaw, pitch, roll;
+		tf2::getEulerYPR(tf_transform.transform.rotation, yaw, pitch, roll);
+
+		pcl::CropBox<pcl::PointXYZ> box_filter;
+		box_filter.setMin(Eigen::Vector4f(-obstacle_window, -obstacle_window,
+																			-(height_ / 2.0) - std::min(height_diff, 0.0),
+																			0.0));
+		box_filter.setMax(Eigen::Vector4f(obstacle_window, obstacle_window,
+																			(height_ / 2.0) + std::max(height_diff, 0.0), 1.0));
+		box_filter.setTranslation(Eigen::Vector3f(tf_transform.transform.translation.x,
+																							tf_transform.transform.translation.y,
+																							tf_transform.transform.translation.z));
+		box_filter.setRotation(Eigen::Vector3f(roll, pitch, yaw));
+		box_filter.setInputCloud(cloud);
+		box_filter.filter(*cloud);
+
+		Eigen::Affine3f transform = Eigen::Affine3f::Identity();
+		transform.translation() << tf_transform.transform.translation.x,
+				tf_transform.transform.translation.y, tf_transform.transform.translation.z;
+		transform.rotate(Eigen::AngleAxisf(yaw, Eigen::Vector3f::UnitZ()));
+		transform.rotate(Eigen::AngleAxisf(pitch, Eigen::Vector3f::UnitY()));
+		transform.rotate(Eigen::AngleAxisf(roll, Eigen::Vector3f::UnitX()));
+		pcl::transformPointCloud(*cloud, *cloud, transform.inverse());
+
+		if (cloud->points.empty())
+		{
+			continue;
+		}
+
+		pcl::KdTree<pcl::PointXYZ>::Ptr tree_(new pcl::KdTreeFLANN<pcl::PointXYZ>);
+		tree_->setInputCloud(cloud);
+
+		std::vector<int> nn_indices(1);
+		std::vector<float> nn_dists(1);
+
+		tree_->nearestKSearch(pcl::PointXYZ(0, 0, 0), 1, nn_indices, nn_dists);
+
+		if (!nn_dists.empty() && nn_dists[0] < closest_distance)
+		{
+			closest_distance = nn_dists[0];
+		}
+	}
+
+	return closest_distance;
 }
 
 geometry_msgs::Pose CollisionAvoidance::interpolate(const geometry_msgs::Pose& start,
