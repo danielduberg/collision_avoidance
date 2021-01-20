@@ -23,8 +23,11 @@ find_package(catkin REQUIRED COMPONENTS
   tf2_msgs
   tf2_ros
   tf2_sensor_msgs
+	ufomap_msgs
+	ufomap_ros
 )
 
+find_package(ufomap REQUIRED)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -130,6 +133,7 @@ catkin_package(
 include_directories(
   include ${roscpp_INCLUDE_DIRS}
   ${catkin_INCLUDE_DIRS}
+  ${ufomap_INCLUDE_DIRS}
 )
 
 set(COLLISION_AVOIDANCE_SOURCE_FILES
@@ -152,6 +156,7 @@ add_dependencies(${PROJECT_NAME}_nodelet ${${PROJECT_NAME}_EXPORTED_TARGETS} ${c
 ## Specify libraries to link a library or executable target against
 target_link_libraries(${PROJECT_NAME}_nodelet
   ${catkin_LIBRARIES}
+  UFO::Map
 )
 
 ## Declare a C++ executable
@@ -173,6 +178,7 @@ add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catk
 ## Specify libraries to link a library or executable target against
 target_link_libraries(${PROJECT_NAME}_node
   ${catkin_LIBRARIES}
+  UFO::Map
 )
 
 ## Declare a C++ library

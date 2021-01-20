@@ -1,36 +1,44 @@
 #ifndef COLLISION_AVOIDANCE_H
 #define COLLISION_AVOIDANCE_H
 
-#include <nodelet/nodelet.h>
-#include <ros/ros.h>
+// UFO
+#include <ufo/map/occupancy_map.h>
+#include <ufo/map/occupancy_map_color.h>
 
+// UFO ROS
+#include <ufomap_msgs/UFOMapStamped.h>
+#include <ufomap_msgs/UFOMapMetaData.h>
+#include <ufomap_msgs/conversions.h>
+
+// ROS
 #include <actionlib/server/simple_action_server.h>
+#include <collision_avoidance/CollisionAvoidanceConfig.h>
 #include <collision_avoidance/PathControlAction.h>
-
-#include <tf2_ros/transform_listener.h>
-
-#include <pcl/point_types.h>
-#include <pcl_ros/point_cloud.h>
-#include <sensor_msgs/PointCloud2.h>
-
-#include <geometry_msgs/TwistStamped.h>
-#include <nav_msgs/Odometry.h>
-#include <sensor_msgs/Imu.h>
-
 #include <collision_avoidance/obstacle_restriction_method.h>
 #include <collision_avoidance/polar_histogram.h>
-
-#include <collision_avoidance/CollisionAvoidanceConfig.h>
 #include <dynamic_reconfigure/server.h>
+#include <geometry_msgs/TwistStamped.h>
+#include <nav_msgs/Odometry.h>
+#include <nodelet/nodelet.h>
+#include <pcl/point_types.h>
+#include <pcl_ros/point_cloud.h>
+#include <ros/ros.h>
+#include <sensor_msgs/Imu.h>
+#include <sensor_msgs/PointCloud2.h>
+#include <tf2_ros/transform_listener.h>
+
+// STD
+#include <shared_mutex>
+#include <variant>
 
 namespace collision_avoidance
 {
 class CollisionAvoidance
 {
-private:
+ private:
 	// Subscribers
+	ros::Subscriber map_sub_;
 	std::vector<ros::Subscriber> cloud_sub_;
-	ros::Subscriber sensor_sub_;
 	ros::Subscriber odometry_sub_;
 
 	// Publishers
@@ -49,11 +57,25 @@ private:
 	// Dynamic reconfigure
 	dynamic_reconfigure::Server<collision_avoidance::CollisionAvoidanceConfig> cs_;
 	dynamic_reconfigure::Server<collision_avoidance::CollisionAvoidanceConfig>::CallbackType
-			f_;
+	    f_;
 
 	// Stored data
+	std::variant<std::monostate, ufo::map::OccupancyMap, ufo::map::OccupancyMapColor> map_;
 	std::vector<pcl::PointCloud<pcl::PointXYZ>::ConstPtr> clouds_;
 	nav_msgs::Odometry::ConstPtr odometry_;
+
+	// Automatic pruning
+	bool automatic_pruning_;
+
+	// Occupancy thresholds
+	double occupied_thres_;
+	double free_thres_;
+
+	// Unknown as occupied
+	bool unknown_as_occupied_;
+
+	// Mutex
+	mutable std::shared_mutex map_mutex_;
 
 	// Current target
 	geometry_msgs::PoseStamped target_;
@@ -97,53 +119,112 @@ private:
 	bool move_while_yawing_;
 	bool yaw_each_setpoint_;
 
-public:
-	CollisionAvoidance(ros::NodeHandle& nh, ros::NodeHandle& nh_priv);
+ public:
+	CollisionAvoidance(ros::NodeHandle &nh, ros::NodeHandle &nh_priv);
 
-private:
-	void goalCallback(const collision_avoidance::PathControlGoal::ConstPtr& goal);
+ private:
+	void goalCallback(const collision_avoidance::PathControlGoal::ConstPtr &goal);
 
-	geometry_msgs::PoseStamped getNextSetpoint(nav_msgs::Path* path,
-																						 bool go_to_every_target = false) const;
+	geometry_msgs::PoseStamped getNextSetpoint(nav_msgs::Path *path,
+	                                           bool go_to_every_target = false) const;
 
 	double getDistanceClosestObstacle(double obstacle_window, double height_diff) const;
 
-	geometry_msgs::Pose interpolate(const geometry_msgs::Pose& start,
-																	const geometry_msgs::Pose& end, double t) const;
+	geometry_msgs::Pose interpolate(const geometry_msgs::Pose &start,
+	                                const geometry_msgs::Pose &end, double t) const;
 
-	geometry_msgs::Point lerp(const geometry_msgs::Point& start,
-														const geometry_msgs::Point& end, double t) const;
+	geometry_msgs::Point lerp(const geometry_msgs::Point &start,
+	                          const geometry_msgs::Point &end, double t) const;
 
-	geometry_msgs::Quaternion slerp(const geometry_msgs::Quaternion& start,
-																	const geometry_msgs::Quaternion& end, double t) const;
+	geometry_msgs::Quaternion slerp(const geometry_msgs::Quaternion &start,
+	                                const geometry_msgs::Quaternion &end, double t) const;
 
 	bool avoidCollision(geometry_msgs::PoseStamped setpoint, bool do_avoidance = true);
 
 	void noInput(geometry_msgs::PoseStamped setpoint) const;
 
-	void adjustVelocity(geometry_msgs::TwistStamped* control,
-											const PolarHistogram& obstacles) const;
+	void adjustVelocity(geometry_msgs::TwistStamped *control,
+	                    const PolarHistogram &obstacles) const;
 
 	PolarHistogram getObstacles(double obstacle_window, double height_diff = 0.0) const;
 
-	std::pair<double, double> getDistanceToTarget(const geometry_msgs::PoseStamped& target);
+	std::pair<double, double> getDistanceToTarget(const geometry_msgs::PoseStamped &target);
 
-	void timerCallback(const ros::TimerEvent& event);
+	void timerCallback(const ros::TimerEvent &event);
 
-	void publishObstacles(const PolarHistogram& obstacles) const;
+	void publishObstacles(const PolarHistogram &obstacles) const;
 
-	void cloudCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& cloud, int index)
+	void cloudCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr &cloud, int index)
 	{
 		clouds_[index] = cloud;
 	}
 
-	void odometryCallback(const nav_msgs::Odometry::ConstPtr& odometry)
+	void mapCallback(ufomap_msgs::UFOMapStamped::ConstPtr const &msg)
+	{
+		if (!checkMap(msg->map.info.id, msg->map.info.resolution, msg->map.info.depth_levels)) {
+			if (!createMap(msg->map.info)) {
+				fprintf(stderr, "Could not create map!\n");
+				// TODO: ERROR
+				return;
+			}
+		}
+
+		if (!std::visit(
+		        [this, &msg](auto &map) -> bool {
+			        if constexpr (!std::is_same_v<std::decay_t<decltype(map)>,
+			                                      std::monostate>) {
+				        return ufomap_msgs::msgToUfo(msg->map, map);
+			        }
+			        return false;
+		        },
+		        map_)) {
+			fprintf(stderr, "Could not convert msg to map!\n");
+			// TODO: ERROR
+			return;
+		}
+	}
+
+	void odometryCallback(const nav_msgs::Odometry::ConstPtr &odometry)
 	{
 		odometry_ = odometry;
 	}
 
-	void configCallback(const collision_avoidance::CollisionAvoidanceConfig& config,
-											uint32_t level);
+	void configCallback(const collision_avoidance::CollisionAvoidanceConfig &config,
+	                    uint32_t level);
+
+	bool createMap(ufomap_msgs::UFOMapMetaData const &info)
+	{
+		// FIXME: Remove hardcoded
+		if ("occupancy_map" == info.id) {
+			std::unique_lock write_lock(map_mutex_);
+			map_.emplace<ufo::map::OccupancyMap>(info.resolution, info.depth_levels,
+			                                     automatic_pruning_, occupied_thres_,
+			                                     free_thres_);
+			return true;
+		} else if ("occupancy_map_color" == info.id) {
+			std::unique_lock write_lock(map_mutex_);
+			map_.emplace<ufo::map::OccupancyMapColor>(info.resolution, info.depth_levels,
+			                                          automatic_pruning_, occupied_thres_,
+			                                          free_thres_);
+			return true;
+		}
+
+		return false;
+	}
+
+	bool checkMap(std::string const &type, double resolution,
+	              ufo::map::DepthType depth_levels) const
+	{
+		return std::visit(
+		    [this, &type, resolution, depth_levels](auto &map) -> bool {
+			    if constexpr (!std::is_same_v<std::decay_t<decltype(map)>, std::monostate>) {
+				    return map.getTreeType() == type && map.getResolution() == resolution &&
+				           map.getTreeDepthLevels() == depth_levels;
+			    }
+			    return false;
+		    },
+		    map_);
+	}
 };
 }  // namespace collision_avoidance
 

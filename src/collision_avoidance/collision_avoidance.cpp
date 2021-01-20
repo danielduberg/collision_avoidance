@@ -1,9 +1,5 @@
 #include <collision_avoidance/collision_avoidance.h>
 #include <collision_avoidance/no_input.h>
-
-#include <tf2/utils.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
-
 #include <pcl/common/transforms.h>
 #include <pcl/filters/approximate_voxel_grid.h>
 #include <pcl/filters/conditional_removal.h>
@@ -12,25 +8,28 @@
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl/range_image/range_image.h>
+#include <tf2/utils.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
 namespace collision_avoidance
 {
-CollisionAvoidance::CollisionAvoidance(ros::NodeHandle& nh, ros::NodeHandle& nh_priv)
-	: odometry_sub_(
-				nh.subscribe("odometry", 10, &CollisionAvoidance::odometryCallback, this))
-	, control_pub_(nh_priv.advertise<geometry_msgs::TwistStamped>("control", 10))
-	, path_pub_(nh_priv.advertise<nav_msgs::Path>("path", 10))
-	, obstacle_pub_(nh_priv.advertise<pcl::PointCloud<pcl::PointXYZ>>("obstacles", 10))
-	, current_setpoint_(
-				nh_priv.advertise<geometry_msgs::PointStamped>("current_setpoint", 10))
-	, as_(nh, "move_to", boost::bind(&CollisionAvoidance::goalCallback, this, _1), false)
-	, tf_listener_(tf_buffer_)
-	, cs_(nh_priv)
-	, orm_(nh_priv)
-	, robot_frame_id_(nh_priv.param<std::string>("robot_frame_id", "base_link"))
-	, publish_timer_(nh_priv.createTimer(ros::Rate(nh_priv.param("frequency", 20.0)),
-																			 &CollisionAvoidance::timerCallback, this, false,
-																			 false))
+CollisionAvoidance::CollisionAvoidance(ros::NodeHandle &nh, ros::NodeHandle &nh_priv)
+    : map_sub_(nh.subscribe("map", 100, &CollisionAvoidance::mapCallback, this)),
+      odometry_sub_(
+          nh.subscribe("odometry", 10, &CollisionAvoidance::odometryCallback, this)),
+      control_pub_(nh_priv.advertise<geometry_msgs::TwistStamped>("control", 10)),
+      path_pub_(nh_priv.advertise<nav_msgs::Path>("path", 10)),
+      obstacle_pub_(nh_priv.advertise<pcl::PointCloud<pcl::PointXYZ>>("obstacles", 10)),
+      current_setpoint_(
+          nh_priv.advertise<geometry_msgs::PointStamped>("current_setpoint", 10)),
+      as_(nh, "move_to", boost::bind(&CollisionAvoidance::goalCallback, this, _1), false),
+      tf_listener_(tf_buffer_),
+      cs_(nh_priv),
+      orm_(nh_priv),
+      robot_frame_id_(nh_priv.param<std::string>("robot_frame_id", "base_link")),
+      publish_timer_(nh_priv.createTimer(ros::Rate(nh_priv.param("frequency", 20.0)),
+                                         &CollisionAvoidance::timerCallback, this, false,
+                                         false))
 {
 	// Set up dynamic reconfigure server
 	f_ = boost::bind(&CollisionAvoidance::configCallback, this, _1, _2);
@@ -38,11 +37,10 @@ CollisionAvoidance::CollisionAvoidance(ros::NodeHandle& nh, ros::NodeHandle& nh_
 
 	int num_cloud_topics = nh_priv.param("num_cloud_topics", 1);
 	std::string topic = "cloud";
-	for (int i = 0; i < num_cloud_topics; ++i)
-	{
+	for (int i = 0; i < num_cloud_topics; ++i) {
 		std::string final_topic = i == 0 ? topic : topic + "_" + std::to_string(i);
 		cloud_sub_.emplace_back(nh.subscribe<pcl::PointCloud<pcl::PointXYZ>>(
-				final_topic, 10, boost::bind(&CollisionAvoidance::cloudCallback, this, _1, i)));
+		    final_topic, 10, boost::bind(&CollisionAvoidance::cloudCallback, this, _1, i)));
 	}
 	clouds_.resize(cloud_sub_.size());
 
@@ -50,16 +48,14 @@ CollisionAvoidance::CollisionAvoidance(ros::NodeHandle& nh, ros::NodeHandle& nh_
 }
 
 void CollisionAvoidance::goalCallback(
-		const collision_avoidance::PathControlGoal::ConstPtr& goal)
+    const collision_avoidance::PathControlGoal::ConstPtr &goal)
 {
-	if (goal->path.poses.empty())
-	{
+	if (goal->path.poses.empty()) {
 		as_.setSucceeded();
 		return;
 	}
 
-	if (!odometry_)
-	{
+	if (!odometry_) {
 		as_.setAborted();
 		return;
 	}
@@ -72,10 +68,8 @@ void CollisionAvoidance::goalCallback(
 	std::pair<double, double> distance;
 	int times_backwards = 0;
 	ros::Rate r(frequency_);
-	while (!path.poses.empty())
-	{
-		if (as_.isPreemptRequested() || !ros::ok())
-		{
+	while (!path.poses.empty()) {
+		if (as_.isPreemptRequested() || !ros::ok()) {
 			as_.setPreempted();
 			target_.header = odometry_->header;
 			target_.pose = odometry_->pose.pose;
@@ -84,7 +78,7 @@ void CollisionAvoidance::goalCallback(
 		}
 
 		geometry_msgs::PoseStamped setpoint =
-				getNextSetpoint(&path, goal->go_to_every_target);
+		    getNextSetpoint(&path, goal->go_to_every_target);
 
 		geometry_msgs::PointStamped point;
 		point.header = setpoint.header;
@@ -93,10 +87,9 @@ void CollisionAvoidance::goalCallback(
 		current_setpoint_.publish(point);
 
 		times_backwards =
-				avoidCollision(setpoint, goal->do_avoidance) ? 0 : times_backwards + 1;
+		    avoidCollision(setpoint, goal->do_avoidance) ? 0 : times_backwards + 1;
 
-		if (times_backwards > goal->max_times_backwards)
-		{
+		if (times_backwards > goal->max_times_backwards) {
 			// We cannot move towards target because it is blocked
 			path.poses.clear();
 			path_pub_.publish(path);
@@ -129,42 +122,36 @@ void CollisionAvoidance::goalCallback(
 	publish_timer_.start();
 }
 
-geometry_msgs::PoseStamped
-CollisionAvoidance::getNextSetpoint(nav_msgs::Path* path, bool go_to_every_target) const
+geometry_msgs::PoseStamped CollisionAvoidance::getNextSetpoint(
+    nav_msgs::Path *path, bool go_to_every_target) const
 {
-	if (path->poses.empty())
-	{
+	if (path->poses.empty()) {
 		return geometry_msgs::PoseStamped();  // TODO: What?
 	}
 
 	geometry_msgs::TransformStamped transform;
 	geometry_msgs::PoseStamped transformed_pose;
 
-	try
-	{
+	try {
 		transform = tf_buffer_.lookupTransform(
-				robot_frame_id_, path->poses.front().header.frame_id, ros::Time(0));
+		    robot_frame_id_, path->poses.front().header.frame_id, ros::Time(0));
 		tf2::doTransform(path->poses.front(), transformed_pose, transform);
-	}
-	catch (tf2::TransformException& ex)
-	{
+	} catch (tf2::TransformException &ex) {
 		// ROS_WARN_THROTTLE(1, "Get next setpoint: %s", ex.what());
 		return geometry_msgs::PoseStamped();  // TODO: What?
 	}
 
 	double distance =
-			Eigen::Vector3d(transformed_pose.pose.position.x, transformed_pose.pose.position.y,
-											transformed_pose.pose.position.z)
-					.norm();
+	    Eigen::Vector3d(transformed_pose.pose.position.x, transformed_pose.pose.position.y,
+	                    transformed_pose.pose.position.z)
+	        .norm();
 
-	if (go_to_every_target)
-	{
+	if (go_to_every_target) {
 		double yaw_error = std::abs(tf2::getYaw(transformed_pose.pose.orientation));
-		if (path->poses.size() == 1)
-		{
+		if (path->poses.size() == 1) {
 			geometry_msgs::PoseStamped temp = path->poses.front();
 			if (distance < distance_converged_ && yaw_error < yaw_converged_)  // TODO: Yaw
-																																				 // converged?
+			                                                                   // converged?
 			{
 				path->poses.erase(path->poses.begin());
 			}
@@ -173,39 +160,33 @@ CollisionAvoidance::getNextSetpoint(nav_msgs::Path* path, bool go_to_every_targe
 
 		// Note: path->poses.size() >= 2
 		if (distance < distance_converged_ && yaw_error < yaw_converged_)  // TODO: Yaw
-																																			 // converged?
+		                                                                   // converged?
 		{
 			path->poses.erase(path->poses.begin());
 		}
 		return path->poses.front();
-	}
-	else
-	{
-		if (path->poses.size() == 1)
-		{
+	} else {
+		if (path->poses.size() == 1) {
 			geometry_msgs::PoseStamped temp = path->poses.front();
 			if (distance < distance_converged_)  // TODO: Yaw
-																					 // converged?
+			                                     // converged?
 			{
 				path->poses.erase(path->poses.begin());
 			}
 			return temp;
 		}
 
-		double look_ahead_distance =
-				std::min(look_ahead_distance_,
-								 look_ahead_distance_);  // getDistanceClosestObstacle(look_ahead_distance_,
-																				 // 0) / 2.0);  // TODO: Set to good values
+		double look_ahead_distance = std::min(
+		    look_ahead_distance_,
+		    look_ahead_distance_);  // getDistanceClosestObstacle(look_ahead_distance_,
+		                            // 0) / 2.0);  // TODO: Set to good values
 
 		double distance_left = look_ahead_distance;
 
-		if (look_ahead_distance / 2.0 >= distance)
-		{
+		if (look_ahead_distance / 2.0 >= distance) {
 			path->poses.erase(path->poses.begin());
 			distance_left -= distance;
-		}
-		else if (look_ahead_distance < distance)
-		{
+		} else if (look_ahead_distance < distance) {
 			return path->poses.front();
 		}
 
@@ -215,29 +196,26 @@ CollisionAvoidance::getNextSetpoint(nav_msgs::Path* path, bool go_to_every_targe
 		last_pose.header.frame_id = robot_frame_id_;
 		last_pose.header.stamp = ros::Time::now();
 		last_pose.pose.orientation.w = 1;
-		try
-		{
+		try {
 			Eigen::Vector3d last_position(last_pose.pose.position.x, last_pose.pose.position.y,
-																		last_pose.pose.position.z);
-			for (const geometry_msgs::PoseStamped& pose : path->poses)
-			{
+			                              last_pose.pose.position.z);
+			for (const geometry_msgs::PoseStamped &pose : path->poses) {
 				transform = tf_buffer_.lookupTransform(robot_frame_id_, pose.header.frame_id,
-																							 ros::Time(0));
+				                                       ros::Time(0));
 				tf2::doTransform(pose, transformed_pose, transform);
 
 				Eigen::Vector3d position(transformed_pose.pose.position.x,
-																 transformed_pose.pose.position.y,
-																 transformed_pose.pose.position.z);
+				                         transformed_pose.pose.position.y,
+				                         transformed_pose.pose.position.z);
 
 				double distance = (position - last_position).norm();
 
-				if (distance > distance_left)
-				{
+				if (distance > distance_left) {
 					// Return interpolated between pose and last_pose
 					last_pose.header.frame_id = robot_frame_id_;
 					last_pose.header.stamp = ros::Time::now();
 					last_pose.pose = interpolate(last_pose.pose, transformed_pose.pose,
-																			 distance_left / distance);
+					                             distance_left / distance);
 					// ROS_WARN("%.2f",
 					//          (Eigen::Vector3d(last_pose.pose.position.x,
 					//          last_pose.pose.position.y, last_pose.pose.position.z) -
@@ -250,9 +228,7 @@ CollisionAvoidance::getNextSetpoint(nav_msgs::Path* path, bool go_to_every_targe
 				last_pose = transformed_pose;
 				last_position = position;
 			}
-		}
-		catch (tf2::TransformException& ex)
-		{
+		} catch (tf2::TransformException &ex) {
 			ROS_WARN_THROTTLE(1, "Get next setpoint: %s", ex.what());
 			return last_pose;
 		}
@@ -262,14 +238,14 @@ CollisionAvoidance::getNextSetpoint(nav_msgs::Path* path, bool go_to_every_targe
 }
 
 double CollisionAvoidance::getDistanceClosestObstacle(double obstacle_window,
-																											double height_diff) const
+                                                      double height_diff) const
 {
 	double closest_distance = std::numeric_limits<double>::max();
 
-	for (pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud_ptr : clouds_)
-	{
-		if (!cloud_ptr || cloud_ptr->points.empty())
-		{
+	// TODO: Implement map
+
+	for (pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud_ptr : clouds_) {
+		if (!cloud_ptr || cloud_ptr->points.empty()) {
 			continue;
 		}
 
@@ -279,13 +255,10 @@ double CollisionAvoidance::getDistanceClosestObstacle(double obstacle_window,
 		pcl::removeNaNFromPointCloud(*cloud_ptr, *cloud, indices);
 
 		geometry_msgs::TransformStamped tf_transform;
-		try
-		{
+		try {
 			tf_transform = tf_buffer_.lookupTransform(cloud_ptr->header.frame_id,
-																								robot_frame_id_, ros::Time(0));
-		}
-		catch (tf2::TransformException& ex)
-		{
+			                                          robot_frame_id_, ros::Time(0));
+		} catch (tf2::TransformException &ex) {
 			ROS_WARN_THROTTLE(1, "Get distance closest obstacle: %s", ex.what());
 			continue;  // TODO: Fix
 		}
@@ -295,27 +268,26 @@ double CollisionAvoidance::getDistanceClosestObstacle(double obstacle_window,
 
 		pcl::CropBox<pcl::PointXYZ> box_filter;
 		box_filter.setMin(Eigen::Vector4f(-obstacle_window, -obstacle_window,
-																			-(height_ / 2.0) - std::min(height_diff, 0.0),
-																			0.0));
+		                                  -(height_ / 2.0) - std::min(height_diff, 0.0),
+		                                  0.0));
 		box_filter.setMax(Eigen::Vector4f(obstacle_window, obstacle_window,
-																			(height_ / 2.0) + std::max(height_diff, 0.0), 1.0));
+		                                  (height_ / 2.0) + std::max(height_diff, 0.0), 1.0));
 		box_filter.setTranslation(Eigen::Vector3f(tf_transform.transform.translation.x,
-																							tf_transform.transform.translation.y,
-																							tf_transform.transform.translation.z));
+		                                          tf_transform.transform.translation.y,
+		                                          tf_transform.transform.translation.z));
 		box_filter.setRotation(Eigen::Vector3f(roll, pitch, yaw));
 		box_filter.setInputCloud(cloud);
 		box_filter.filter(*cloud);
 
 		Eigen::Affine3f transform = Eigen::Affine3f::Identity();
 		transform.translation() << tf_transform.transform.translation.x,
-				tf_transform.transform.translation.y, tf_transform.transform.translation.z;
+		    tf_transform.transform.translation.y, tf_transform.transform.translation.z;
 		transform.rotate(Eigen::AngleAxisf(yaw, Eigen::Vector3f::UnitZ()));
 		transform.rotate(Eigen::AngleAxisf(pitch, Eigen::Vector3f::UnitY()));
 		transform.rotate(Eigen::AngleAxisf(roll, Eigen::Vector3f::UnitX()));
 		pcl::transformPointCloud(*cloud, *cloud, transform.inverse());
 
-		if (cloud->points.empty())
-		{
+		if (cloud->points.empty()) {
 			continue;
 		}
 
@@ -327,8 +299,7 @@ double CollisionAvoidance::getDistanceClosestObstacle(double obstacle_window,
 
 		tree_->nearestKSearch(pcl::PointXYZ(0, 0, 0), 1, nn_indices, nn_dists);
 
-		if (!nn_dists.empty() && nn_dists[0] < closest_distance)
-		{
+		if (!nn_dists.empty() && nn_dists[0] < closest_distance) {
 			closest_distance = nn_dists[0];
 		}
 	}
@@ -336,9 +307,9 @@ double CollisionAvoidance::getDistanceClosestObstacle(double obstacle_window,
 	return closest_distance;
 }
 
-geometry_msgs::Pose CollisionAvoidance::interpolate(const geometry_msgs::Pose& start,
-																										const geometry_msgs::Pose& end,
-																										double t) const
+geometry_msgs::Pose CollisionAvoidance::interpolate(const geometry_msgs::Pose &start,
+                                                    const geometry_msgs::Pose &end,
+                                                    double t) const
 {
 	geometry_msgs::Pose result;
 	result.position = lerp(start.position, end.position, t);
@@ -346,9 +317,9 @@ geometry_msgs::Pose CollisionAvoidance::interpolate(const geometry_msgs::Pose& s
 	return result;
 }
 
-geometry_msgs::Point CollisionAvoidance::lerp(const geometry_msgs::Point& start,
-																							const geometry_msgs::Point& end,
-																							double t) const
+geometry_msgs::Point CollisionAvoidance::lerp(const geometry_msgs::Point &start,
+                                              const geometry_msgs::Point &end,
+                                              double t) const
 {
 	geometry_msgs::Point result;
 	result.x = (1.0 - t) * start.x + t * end.x;
@@ -357,9 +328,9 @@ geometry_msgs::Point CollisionAvoidance::lerp(const geometry_msgs::Point& start,
 	return result;
 }
 
-geometry_msgs::Quaternion
-CollisionAvoidance::slerp(const geometry_msgs::Quaternion& start,
-													const geometry_msgs::Quaternion& end, double t) const
+geometry_msgs::Quaternion CollisionAvoidance::slerp(
+    const geometry_msgs::Quaternion &start, const geometry_msgs::Quaternion &end,
+    double t) const
 {
 	geometry_msgs::Quaternion result;
 	tf2::Quaternion tf_start;
@@ -371,16 +342,13 @@ CollisionAvoidance::slerp(const geometry_msgs::Quaternion& start,
 }
 
 bool CollisionAvoidance::avoidCollision(geometry_msgs::PoseStamped setpoint,
-																				bool do_avoidance)
+                                        bool do_avoidance)
 {
-	try
-	{
+	try {
 		geometry_msgs::TransformStamped transform = tf_buffer_.lookupTransform(
-				robot_frame_id_, setpoint.header.frame_id, ros::Time(0));
+		    robot_frame_id_, setpoint.header.frame_id, ros::Time(0));
 		tf2::doTransform(setpoint, setpoint, transform);
-	}
-	catch (tf2::TransformException& ex)
-	{
+	} catch (tf2::TransformException &ex) {
 		ROS_WARN_THROTTLE(1, "Avoid collision: %s", ex.what());
 		noInput(setpoint);
 		return true;  // TODO: What should it return?
@@ -390,48 +358,41 @@ bool CollisionAvoidance::avoidCollision(geometry_msgs::PoseStamped setpoint,
 	Eigen::Vector2d control_2d;
 
 	PolarHistogram obstacles =
-			getObstacles(goal.norm() + (2.0 * radius_) + min_distance_hold_);
+	    getObstacles(goal.norm() + (2.0 * radius_) + min_distance_hold_);
 	publishObstacles(obstacles);
 
 	// Is this correct?
-	goal[0] -= odometry_->twist.twist.linear.x;
-	goal[1] -= odometry_->twist.twist.linear.y;
+	// goal[0] -= odometry_->twist.twist.linear.x;
+	// goal[1] -= odometry_->twist.twist.linear.y;
 
-	if (do_avoidance)
-	{
+	if (do_avoidance) {
 		control_2d = orm_.avoidCollision(goal, obstacles, robot_frame_id_);
-	}
-	else
-	{
+	} else {
 		control_2d = goal;
 	}
 
 	double distance_left =
-			Eigen::Vector3d(setpoint.pose.position.x, setpoint.pose.position.y,
-											setpoint.pose.position.z)
-					.norm();
+	    Eigen::Vector3d(setpoint.pose.position.x, setpoint.pose.position.y,
+	                    setpoint.pose.position.z)
+	        .norm();
 
-	double yaw = (look_forward_ && distance_left > distance_converged_) ?
-									 std::atan2(control_2d[1], control_2d[0]) :
-									 tf2::getYaw(setpoint.pose.orientation);
+	double yaw = (look_forward_ && distance_left > distance_converged_)
+	                 ? std::atan2(control_2d[1], control_2d[0])
+	                 : tf2::getYaw(setpoint.pose.orientation);
 
 	double direction_change = std::fabs(std::remainder(
-			std::atan2(goal[1], goal[0]) - std::atan2(control_2d[1], control_2d[0]), 2 * M_PI));
+	    std::atan2(goal[1], goal[0]) - std::atan2(control_2d[1], control_2d[0]), 2 * M_PI));
 
 	bool valid = (!control_2d.isZero() && direction_change <= max_direction_change_) ||
-							 (!move_while_yawing_ && std::abs(yaw) > yaw_converged_);
+	             (!move_while_yawing_ && std::abs(yaw) > yaw_converged_);
 
-	if (!valid || (!move_while_yawing_ && std::abs(yaw) > yaw_converged_))
-	{
-		goal[0] += odometry_->twist.twist.linear.x;
-		goal[1] += odometry_->twist.twist.linear.y;
-		if (do_avoidance)
-		{
+	if (!valid || (!move_while_yawing_ && std::abs(yaw) > yaw_converged_)) {
+		// goal[0] += odometry_->twist.twist.linear.x;
+		// goal[1] += odometry_->twist.twist.linear.y;
+		if (do_avoidance) {
 			control_2d = no_input::avoidCollision(Eigen::Vector2d(0, 0), obstacles, radius_,
-																						min_distance_hold_);
-		}
-		else
-		{
+			                                      min_distance_hold_);
+		} else {
 			control_2d = goal;
 		}
 	}
@@ -457,14 +418,11 @@ bool CollisionAvoidance::avoidCollision(geometry_msgs::PoseStamped setpoint,
 
 void CollisionAvoidance::noInput(geometry_msgs::PoseStamped setpoint) const
 {
-	try
-	{
+	try {
 		geometry_msgs::TransformStamped transform = tf_buffer_.lookupTransform(
-				robot_frame_id_, setpoint.header.frame_id, ros::Time(0));
+		    robot_frame_id_, setpoint.header.frame_id, ros::Time(0));
 		tf2::doTransform(setpoint, setpoint, transform);
-	}
-	catch (tf2::TransformException& ex)
-	{
+	} catch (tf2::TransformException &ex) {
 		ROS_WARN_THROTTLE(1, "No input: %s", ex.what());
 		return;
 	}
@@ -472,11 +430,11 @@ void CollisionAvoidance::noInput(geometry_msgs::PoseStamped setpoint) const
 	Eigen::Vector2d goal(setpoint.pose.position.x, setpoint.pose.position.y);
 
 	PolarHistogram obstacles = getObstacles(
-			goal.norm() + (2.0 * radius_) + min_distance_hold_, setpoint.pose.position.z);
+	    goal.norm() + (2.0 * radius_) + min_distance_hold_, setpoint.pose.position.z);
 	publishObstacles(obstacles);
 
 	Eigen::Vector2d control_2d(
-			no_input::avoidCollision(goal, obstacles, radius_, min_distance_hold_));
+	    no_input::avoidCollision(goal, obstacles, radius_, min_distance_hold_));
 	double direction = std::atan2(control_2d[1], control_2d[0]);
 	double magnitude = std::clamp(control_2d.norm(), -max_xy_vel_, max_xy_vel_);
 
@@ -487,54 +445,52 @@ void CollisionAvoidance::noInput(geometry_msgs::PoseStamped setpoint) const
 	control.twist.linear.y = magnitude * std::sin(direction);
 	control.twist.linear.z = std::clamp(setpoint.pose.position.z, -max_z_vel_, max_z_vel_);
 	control.twist.angular.z =
-			std::clamp(tf2::getYaw(setpoint.pose.orientation), -max_yaw_rate_, max_yaw_rate_);
+	    std::clamp(tf2::getYaw(setpoint.pose.orientation), -max_yaw_rate_, max_yaw_rate_);
 
 	adjustVelocity(&control, obstacles);
 	control_pub_.publish(control);
 }
 
-void CollisionAvoidance::publishObstacles(const PolarHistogram& obstacles) const
+void CollisionAvoidance::publishObstacles(const PolarHistogram &obstacles) const
 {
 	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
 	cloud->header.frame_id = robot_frame_id_;
 	pcl_conversions::toPCL(ros::Time::now(), cloud->header.stamp);
 	cloud->width = obstacles.numBuckets();
 	cloud->height = 1;
-	for (const PolarHistogram::Vector& obstacle : obstacles)
-	{
+	for (const PolarHistogram::Vector &obstacle : obstacles) {
 		Eigen::Vector2d p = obstacle.getPoint();
 		cloud->points.emplace_back(p[0], p[1], 0);
 	}
 	obstacle_pub_.publish(cloud);
 }
 
-void CollisionAvoidance::adjustVelocity(geometry_msgs::TwistStamped* control,
-																				const PolarHistogram& obstacles) const
+void CollisionAvoidance::adjustVelocity(geometry_msgs::TwistStamped *control,
+                                        const PolarHistogram &obstacles) const
 {
 	double closest_obstacle_distance = std::numeric_limits<double>::infinity();
-	for (const PolarHistogram::Vector& obstacle : obstacles)
-	{
+	for (const PolarHistogram::Vector &obstacle : obstacles) {
 		closest_obstacle_distance = std::min(closest_obstacle_distance, obstacle.getRange());
 	}
 
 	Eigen::Vector2d goal(control->twist.linear.x, control->twist.linear.y);
 	double direction = std::atan2(goal[1], goal[0]);
 	double updated_magnitude =
-			max_xy_vel_ * std::min(closest_obstacle_distance / (h_m_ * radius_), goal.norm());
+	    max_xy_vel_ * std::min(closest_obstacle_distance / (h_m_ * radius_), goal.norm());
 
 	control->twist.linear.x = updated_magnitude * std::cos(direction);
 	control->twist.linear.y = updated_magnitude * std::sin(direction);
 }
 
 PolarHistogram CollisionAvoidance::getObstacles(double obstacle_window,
-																								double height_diff) const
+                                                double height_diff) const
 {
 	PolarHistogram obstacles(num_histogram_, std::numeric_limits<double>::infinity());
 
-	for (pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud_ptr : clouds_)
-	{
-		if (!cloud_ptr)
-		{
+	// TODO: Implement map
+
+	for (pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud_ptr : clouds_) {
+		if (!cloud_ptr) {
 			continue;
 		}
 
@@ -549,13 +505,10 @@ PolarHistogram CollisionAvoidance::getObstacles(double obstacle_window,
 		sor.filter(*cloud);
 
 		geometry_msgs::TransformStamped tf_transform;
-		try
-		{
+		try {
 			tf_transform = tf_buffer_.lookupTransform(cloud_ptr->header.frame_id,
-																								robot_frame_id_, ros::Time(0));
-		}
-		catch (tf2::TransformException& ex)
-		{
+			                                          robot_frame_id_, ros::Time(0));
+		} catch (tf2::TransformException &ex) {
 			ROS_WARN_THROTTLE(1, "Get obstacles: %s", ex.what());
 			continue;  // TODO: Fix
 		}
@@ -565,29 +518,27 @@ PolarHistogram CollisionAvoidance::getObstacles(double obstacle_window,
 
 		pcl::CropBox<pcl::PointXYZ> box_filter;
 		box_filter.setMin(Eigen::Vector4f(-obstacle_window, -obstacle_window,
-																			-(height_ / 2.0) - std::min(height_diff, 0.0),
-																			0.0));
+		                                  -(height_ / 2.0) - std::min(height_diff, 0.0),
+		                                  0.0));
 		box_filter.setMax(Eigen::Vector4f(obstacle_window, obstacle_window,
-																			(height_ / 2.0) + std::max(height_diff, 0.0), 1.0));
+		                                  (height_ / 2.0) + std::max(height_diff, 0.0), 1.0));
 		box_filter.setTranslation(Eigen::Vector3f(tf_transform.transform.translation.x,
-																							tf_transform.transform.translation.y,
-																							tf_transform.transform.translation.z));
+		                                          tf_transform.transform.translation.y,
+		                                          tf_transform.transform.translation.z));
 		box_filter.setRotation(Eigen::Vector3f(roll, pitch, yaw));
 		box_filter.setInputCloud(cloud);
 		box_filter.filter(*cloud);
 
 		Eigen::Affine3f transform = Eigen::Affine3f::Identity();
 		transform.translation() << tf_transform.transform.translation.x,
-				tf_transform.transform.translation.y, tf_transform.transform.translation.z;
+		    tf_transform.transform.translation.y, tf_transform.transform.translation.z;
 		transform.rotate(Eigen::AngleAxisf(yaw, Eigen::Vector3f::UnitZ()));
 		transform.rotate(Eigen::AngleAxisf(pitch, Eigen::Vector3f::UnitY()));
 		transform.rotate(Eigen::AngleAxisf(roll, Eigen::Vector3f::UnitX()));
 		pcl::transformPointCloud(*cloud, *cloud, transform.inverse());
 
-		for (const pcl::PointXYZ& point : *cloud)
-		{
-			if (!pcl::isFinite(point))
-			{
+		for (const pcl::PointXYZ &point : *cloud) {
+			if (!pcl::isFinite(point)) {
 				continue;
 			}
 
@@ -597,8 +548,7 @@ PolarHistogram CollisionAvoidance::getObstacles(double obstacle_window,
 
 			double direction = std::atan2(p.y, p.x);
 			double range = std::hypot(p.x, p.y);
-			if (!obstacles.isFinite(direction) || range < obstacles.getRange(direction))
-			{
+			if (!obstacles.isFinite(direction) || range < obstacles.getRange(direction)) {
 				obstacles.setRange(direction, range);
 			}
 		}
@@ -607,50 +557,43 @@ PolarHistogram CollisionAvoidance::getObstacles(double obstacle_window,
 	return obstacles;
 }
 
-std::pair<double, double>
-CollisionAvoidance::getDistanceToTarget(const geometry_msgs::PoseStamped& target)
+std::pair<double, double> CollisionAvoidance::getDistanceToTarget(
+    const geometry_msgs::PoseStamped &target)
 {
 	geometry_msgs::TransformStamped transform;
-	try
-	{
+	try {
 		transform = tf_buffer_.lookupTransform(target.header.frame_id, robot_frame_id_,
-																					 ros::Time::now(), ros::Duration(0.1));
-	}
-	catch (tf2::TransformException& ex)
-	{
+		                                       ros::Time::now(), ros::Duration(0.1));
+	} catch (tf2::TransformException &ex) {
 		ROS_WARN_THROTTLE(1, "Get distance to target: %s", ex.what());
 		return std::make_pair(std::numeric_limits<double>::infinity(),
-													std::numeric_limits<double>::infinity());  // TODO: Fix
+		                      std::numeric_limits<double>::infinity());  // TODO: Fix
 	}
 
 	Eigen::Vector3d current_position(transform.transform.translation.x,
-																	 transform.transform.translation.y,
-																	 transform.transform.translation.z);
+	                                 transform.transform.translation.y,
+	                                 transform.transform.translation.z);
 	Eigen::Vector3d target_position(target.pose.position.x, target.pose.position.y,
-																	target.pose.position.z);
+	                                target.pose.position.z);
 	double distance = (target_position - current_position).norm();
 
 	double current_yaw = tf2::getYaw(transform.transform.rotation);
 	double target_yaw = tf2::getYaw(target.pose.orientation);
 	double yaw_diff = std::fabs(
-			std::atan2(std::sin(current_yaw - target_yaw), std::cos(current_yaw - target_yaw)));
+	    std::atan2(std::sin(current_yaw - target_yaw), std::cos(current_yaw - target_yaw)));
 
 	return std::pair(distance, yaw_diff);
 }
 
-void CollisionAvoidance::timerCallback(const ros::TimerEvent&)
-{
-	noInput(target_);
-}
+void CollisionAvoidance::timerCallback(const ros::TimerEvent &) { noInput(target_); }
 
 void CollisionAvoidance::configCallback(
-		const collision_avoidance::CollisionAvoidanceConfig& config, uint32_t)
+    const collision_avoidance::CollisionAvoidanceConfig &config, uint32_t)
 {
 	distance_converged_ = config.distance_converged;
 	yaw_converged_ = config.yaw_converged;
 
-	if (frequency_ != config.frequency)
-	{
+	if (frequency_ != config.frequency) {
 		frequency_ = config.frequency;
 		publish_timer_.setPeriod(ros::Duration(1.0 / frequency_), false);
 	}
@@ -679,5 +622,10 @@ void CollisionAvoidance::configCallback(
 	orm_.setRadius(radius_);
 	orm_.setSecurityDistance(config.security_distance);
 	orm_.setEpsilon(config.epsilon);
+
+	automatic_pruning_ = config.automatic_pruning;
+	occupied_thres_ = config.occupied_thres;
+	free_thres_ = config.free_thres;
+	unknown_as_occupied_ = config.unknown_as_occupied;
 }
 }  // namespace collision_avoidance
