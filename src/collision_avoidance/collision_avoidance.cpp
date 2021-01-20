@@ -1,3 +1,7 @@
+// UFO
+#include <ufomap_ros/conversions.h>
+
+// Other
 #include <collision_avoidance/collision_avoidance.h>
 #include <collision_avoidance/no_input.h>
 #include <pcl/common/transforms.h>
@@ -27,6 +31,7 @@ CollisionAvoidance::CollisionAvoidance(ros::NodeHandle &nh, ros::NodeHandle &nh_
       cs_(nh_priv),
       orm_(nh_priv),
       robot_frame_id_(nh_priv.param<std::string>("robot_frame_id", "base_link")),
+      map_frame_id_(nh_priv.param<std::string>("map_frame_id", "map")),
       publish_timer_(nh_priv.createTimer(ros::Rate(nh_priv.param("frequency", 20.0)),
                                          &CollisionAvoidance::timerCallback, this, false,
                                          false))
@@ -487,72 +492,108 @@ PolarHistogram CollisionAvoidance::getObstacles(double obstacle_window,
 {
 	PolarHistogram obstacles(num_histogram_, std::numeric_limits<double>::infinity());
 
-	// TODO: Implement map
+	std::visit(
+	    [this, &obstacles, obstacle_window, height_diff](auto &map) {
+		    if constexpr (!std::is_same_v<std::decay_t<decltype(map)>, std::monostate>) {
+			    geometry_msgs::TransformStamped tf_transform;
+			    try {
+				    tf_transform =
+				        tf_buffer_.lookupTransform(robot_frame_id_, map_frame_id_, ros::Time(0));
+			    } catch (tf2::TransformException &ex) {
+				    ROS_WARN_THROTTLE(1, "Could not get map to robot transform: %s", ex.what());
+				    return;
+			    }
 
-	for (pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud_ptr : clouds_) {
-		if (!cloud_ptr) {
-			continue;
-		}
+			    ufo::math::Pose6 transform = ufomap_ros::rosToUfo(tf_transform.transform);
 
-		pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
+			    ufo::math::Vector3 position = transform.inversed().translation();
+			    ufo::math::Vector3 half_size(obstacle_window, obstacle_window,
+			                                 (height_ + std::min(height_diff, 0.0)) / 2.0);
+			    ufo::geometry::AABB aabb(position - half_size, position + half_size);
+			    for (auto it = map.beginLeaves(aabb, true, false, unknown_as_occupied_, false,
+			                                   map_depth_),
+			              it_end = map.endLeaves();
+			         it != it_end; ++it) {
+				    ufo::math::Vector3 p = transform.transform(it.getCenter());
+				    // TODO: Do not use only the center. A voxel covers more than a single point
+				    double x = p.x() - odometry_->twist.twist.linear.x;
+				    double y = p.y() - odometry_->twist.twist.linear.y;
 
-		std::vector<int> indices;
-		pcl::removeNaNFromPointCloud(*cloud_ptr, *cloud, indices);
+				    double direction = std::atan2(y, x);
+				    double range = std::hypot(x, y);
+				    if (!obstacles.isFinite(direction) || range < obstacles.getRange(direction)) {
+					    obstacles.setRange(direction, range);
+				    }
+			    }
+		    }
+	    },
+	    map_);
 
-		pcl::VoxelGrid<pcl::PointXYZ> sor;
-		sor.setInputCloud(cloud);
-		sor.setLeafSize(leaf_size_, leaf_size_, leaf_size_);
-		sor.filter(*cloud);
+	// for (pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud_ptr : clouds_) {
+	// 	if (!cloud_ptr) {
+	// 		continue;
+	// 	}
 
-		geometry_msgs::TransformStamped tf_transform;
-		try {
-			tf_transform = tf_buffer_.lookupTransform(cloud_ptr->header.frame_id,
-			                                          robot_frame_id_, ros::Time(0));
-		} catch (tf2::TransformException &ex) {
-			ROS_WARN_THROTTLE(1, "Get obstacles: %s", ex.what());
-			continue;  // TODO: Fix
-		}
+	// 	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
 
-		double yaw, pitch, roll;
-		tf2::getEulerYPR(tf_transform.transform.rotation, yaw, pitch, roll);
+	// 	std::vector<int> indices;
+	// 	pcl::removeNaNFromPointCloud(*cloud_ptr, *cloud, indices);
 
-		pcl::CropBox<pcl::PointXYZ> box_filter;
-		box_filter.setMin(Eigen::Vector4f(-obstacle_window, -obstacle_window,
-		                                  -(height_ / 2.0) - std::min(height_diff, 0.0),
-		                                  0.0));
-		box_filter.setMax(Eigen::Vector4f(obstacle_window, obstacle_window,
-		                                  (height_ / 2.0) + std::max(height_diff, 0.0), 1.0));
-		box_filter.setTranslation(Eigen::Vector3f(tf_transform.transform.translation.x,
-		                                          tf_transform.transform.translation.y,
-		                                          tf_transform.transform.translation.z));
-		box_filter.setRotation(Eigen::Vector3f(roll, pitch, yaw));
-		box_filter.setInputCloud(cloud);
-		box_filter.filter(*cloud);
+	// 	pcl::VoxelGrid<pcl::PointXYZ> sor;
+	// 	sor.setInputCloud(cloud);
+	// 	sor.setLeafSize(leaf_size_, leaf_size_, leaf_size_);
+	// 	sor.filter(*cloud);
 
-		Eigen::Affine3f transform = Eigen::Affine3f::Identity();
-		transform.translation() << tf_transform.transform.translation.x,
-		    tf_transform.transform.translation.y, tf_transform.transform.translation.z;
-		transform.rotate(Eigen::AngleAxisf(yaw, Eigen::Vector3f::UnitZ()));
-		transform.rotate(Eigen::AngleAxisf(pitch, Eigen::Vector3f::UnitY()));
-		transform.rotate(Eigen::AngleAxisf(roll, Eigen::Vector3f::UnitX()));
-		pcl::transformPointCloud(*cloud, *cloud, transform.inverse());
+	// 	geometry_msgs::TransformStamped tf_transform;
+	// 	try {
+	// 		tf_transform = tf_buffer_.lookupTransform(cloud_ptr->header.frame_id,
+	// 		                                          robot_frame_id_, ros::Time(0));
+	// 	} catch (tf2::TransformException &ex) {
+	// 		ROS_WARN_THROTTLE(1, "Get obstacles: %s", ex.what());
+	// 		continue;  // TODO: Fix
+	// 	}
 
-		for (const pcl::PointXYZ &point : *cloud) {
-			if (!pcl::isFinite(point)) {
-				continue;
-			}
+	// 	double yaw, pitch, roll;
+	// 	tf2::getEulerYPR(tf_transform.transform.rotation, yaw, pitch, roll);
 
-			pcl::PointXYZ p = point;
-			p.x = point.x - odometry_->twist.twist.linear.x;
-			p.y = point.y - odometry_->twist.twist.linear.y;
+	// 	pcl::CropBox<pcl::PointXYZ> box_filter;
+	// 	box_filter.setMin(Eigen::Vector4f(-obstacle_window, -obstacle_window,
+	// 	                                  -(height_ / 2.0) - std::min(height_diff, 0.0),
+	// 	                                  0.0));
+	// 	box_filter.setMax(Eigen::Vector4f(obstacle_window, obstacle_window,
+	// 	                                  (height_ / 2.0) + std::max(height_diff,
+	// 0.0), 1.0));
+	// 	box_filter.setTranslation(Eigen::Vector3f(tf_transform.transform.translation.x,
+	// 	                                          tf_transform.transform.translation.y,
+	// 	                                          tf_transform.transform.translation.z));
+	// 	box_filter.setRotation(Eigen::Vector3f(roll, pitch, yaw));
+	// 	box_filter.setInputCloud(cloud);
+	// 	box_filter.filter(*cloud);
 
-			double direction = std::atan2(p.y, p.x);
-			double range = std::hypot(p.x, p.y);
-			if (!obstacles.isFinite(direction) || range < obstacles.getRange(direction)) {
-				obstacles.setRange(direction, range);
-			}
-		}
-	}
+	// 	Eigen::Affine3f transform = Eigen::Affine3f::Identity();
+	// 	transform.translation() << tf_transform.transform.translation.x,
+	// 	    tf_transform.transform.translation.y, tf_transform.transform.translation.z;
+	// 	transform.rotate(Eigen::AngleAxisf(yaw, Eigen::Vector3f::UnitZ()));
+	// 	transform.rotate(Eigen::AngleAxisf(pitch, Eigen::Vector3f::UnitY()));
+	// 	transform.rotate(Eigen::AngleAxisf(roll, Eigen::Vector3f::UnitX()));
+	// 	pcl::transformPointCloud(*cloud, *cloud, transform.inverse());
+
+	// 	for (const pcl::PointXYZ &point : *cloud) {
+	// 		if (!pcl::isFinite(point)) {
+	// 			continue;
+	// 		}
+
+	// 		pcl::PointXYZ p = point;
+	// 		p.x = point.x - odometry_->twist.twist.linear.x;
+	// 		p.y = point.y - odometry_->twist.twist.linear.y;
+
+	// 		double direction = std::atan2(p.y, p.x);
+	// 		double range = std::hypot(p.x, p.y);
+	// 		if (!obstacles.isFinite(direction) || range < obstacles.getRange(direction)) {
+	// 			obstacles.setRange(direction, range);
+	// 		}
+	// 	}
+	// }
 
 	return obstacles;
 }
@@ -627,5 +668,7 @@ void CollisionAvoidance::configCallback(
 	occupied_thres_ = config.occupied_thres;
 	free_thres_ = config.free_thres;
 	unknown_as_occupied_ = config.unknown_as_occupied;
+	map_frame_id_ = config.map_frame_id;
+	map_depth_ = config.map_depth;
 }
 }  // namespace collision_avoidance

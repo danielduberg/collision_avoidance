@@ -6,8 +6,8 @@
 #include <ufo/map/occupancy_map_color.h>
 
 // UFO ROS
-#include <ufomap_msgs/UFOMapStamped.h>
 #include <ufomap_msgs/UFOMapMetaData.h>
+#include <ufomap_msgs/UFOMapStamped.h>
 #include <ufomap_msgs/conversions.h>
 
 // ROS
@@ -59,20 +59,28 @@ class CollisionAvoidance
 	dynamic_reconfigure::Server<collision_avoidance::CollisionAvoidanceConfig>::CallbackType
 	    f_;
 
-	// Stored data
-	std::variant<std::monostate, ufo::map::OccupancyMap, ufo::map::OccupancyMapColor> map_;
-	std::vector<pcl::PointCloud<pcl::PointXYZ>::ConstPtr> clouds_;
-	nav_msgs::Odometry::ConstPtr odometry_;
+	//
+	// UFOMap parameters
+	//
 
+	// UFOMap
+	std::variant<std::monostate, ufo::map::OccupancyMap, ufo::map::OccupancyMapColor> map_;
 	// Automatic pruning
 	bool automatic_pruning_;
-
-	// Occupancy thresholds
+	// Occupied threshold
 	double occupied_thres_;
+	// Free threshold
 	double free_thres_;
-
-	// Unknown as occupied
+	// Treat unknown as occupied
 	bool unknown_as_occupied_;
+	// UFOMap frame
+	std::string map_frame_id_;
+	// Depth to use for UFOMap calculations
+	ufo::map::DepthType map_depth_;
+
+	// Stored data
+	std::vector<pcl::PointCloud<pcl::PointXYZ>::ConstPtr> clouds_;
+	nav_msgs::Odometry::ConstPtr odometry_;
 
 	// Mutex
 	mutable std::shared_mutex map_mutex_;
@@ -83,7 +91,7 @@ class CollisionAvoidance
 	// ORM
 	ORM orm_;
 
-	// Robot frame_id
+	// Frames
 	std::string robot_frame_id_;
 
 	// Converge criterion
@@ -161,7 +169,8 @@ class CollisionAvoidance
 
 	void mapCallback(ufomap_msgs::UFOMapStamped::ConstPtr const &msg)
 	{
-		if (!checkMap(msg->map.info.id, msg->map.info.resolution, msg->map.info.depth_levels)) {
+		if (!checkMap(msg->map.info.id, msg->map.info.resolution,
+		              msg->map.info.depth_levels)) {
 			if (!createMap(msg->map.info)) {
 				fprintf(stderr, "Could not create map!\n");
 				// TODO: ERROR
