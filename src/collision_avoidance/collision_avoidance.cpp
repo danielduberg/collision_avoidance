@@ -70,6 +70,10 @@ void CollisionAvoidance::goalCallback(
 	collision_avoidance::PathControlFeedback feedback;
 
 	nav_msgs::Path path = goal->path;
+	std::vector<uint8_t> look_forward = goal->look_forward;
+	if (look_forward.empty()) {
+		look_forward.resize(path.poses.size(), look_forward_);
+	}
 	std::pair<double, double> distance;
 	int times_backwards = 0;
 	ros::Rate r(frequency_);
@@ -83,7 +87,7 @@ void CollisionAvoidance::goalCallback(
 		}
 
 		geometry_msgs::PoseStamped setpoint =
-		    getNextSetpoint(&path, goal->go_to_every_target);
+		    getNextSetpoint(&path, &look_forward, goal->go_to_every_target);
 
 		geometry_msgs::PointStamped point;
 		point.header = setpoint.header;
@@ -91,8 +95,9 @@ void CollisionAvoidance::goalCallback(
 		point.point = setpoint.pose.position;
 		current_setpoint_.publish(point);
 
-		times_backwards =
-		    avoidCollision(setpoint, goal->do_avoidance) ? 0 : times_backwards + 1;
+		times_backwards = avoidCollision(setpoint, look_forward.front(), goal->do_avoidance)
+		                      ? 0
+		                      : times_backwards + 1;
 
 		if (times_backwards > goal->max_times_backwards) {
 			// We cannot move towards target because it is blocked
@@ -128,7 +133,8 @@ void CollisionAvoidance::goalCallback(
 }
 
 geometry_msgs::PoseStamped CollisionAvoidance::getNextSetpoint(
-    nav_msgs::Path *path, bool go_to_every_target) const
+    nav_msgs::Path *path, std::vector<uint8_t> *look_forward,
+    bool go_to_every_target) const
 {
 	if (path->poses.empty()) {
 		return geometry_msgs::PoseStamped();  // TODO: What?
@@ -159,6 +165,7 @@ geometry_msgs::PoseStamped CollisionAvoidance::getNextSetpoint(
 			                                                                   // converged?
 			{
 				path->poses.erase(path->poses.begin());
+				look_forward->erase(look_forward->begin());
 			}
 			return temp;
 		}
@@ -168,6 +175,7 @@ geometry_msgs::PoseStamped CollisionAvoidance::getNextSetpoint(
 		                                                                   // converged?
 		{
 			path->poses.erase(path->poses.begin());
+			look_forward->erase(look_forward->begin());
 		}
 		return path->poses.front();
 	} else {
@@ -177,6 +185,7 @@ geometry_msgs::PoseStamped CollisionAvoidance::getNextSetpoint(
 			                                     // converged?
 			{
 				path->poses.erase(path->poses.begin());
+				look_forward->erase(look_forward->begin());
 			}
 			return temp;
 		}
@@ -190,6 +199,7 @@ geometry_msgs::PoseStamped CollisionAvoidance::getNextSetpoint(
 
 		if (look_ahead_distance / 2.0 >= distance) {
 			path->poses.erase(path->poses.begin());
+			look_forward->erase(look_forward->begin());
 			distance_left -= distance;
 		} else if (look_ahead_distance < distance) {
 			return path->poses.front();
@@ -347,7 +357,7 @@ geometry_msgs::Quaternion CollisionAvoidance::slerp(
 }
 
 bool CollisionAvoidance::avoidCollision(geometry_msgs::PoseStamped setpoint,
-                                        bool do_avoidance)
+                                        bool look_forward, bool do_avoidance)
 {
 	try {
 		geometry_msgs::TransformStamped transform = tf_buffer_.lookupTransform(
@@ -381,7 +391,7 @@ bool CollisionAvoidance::avoidCollision(geometry_msgs::PoseStamped setpoint,
 	                    setpoint.pose.position.z)
 	        .norm();
 
-	double yaw = (look_forward_ && distance_left > distance_converged_)
+	double yaw = (look_forward && distance_left > distance_converged_)
 	                 ? std::atan2(control_2d[1], control_2d[0])
 	                 : tf2::getYaw(setpoint.pose.orientation);
 

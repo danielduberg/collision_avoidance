@@ -1,5 +1,6 @@
 # Define the goal
 nav_msgs/Path path
+bool[] look_forward
 bool go_to_every_target
 bool do_avoidance
 int32 max_times_backwards

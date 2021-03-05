@@ -134,6 +134,7 @@ class CollisionAvoidance
 	void goalCallback(const collision_avoidance::PathControlGoal::ConstPtr &goal);
 
 	geometry_msgs::PoseStamped getNextSetpoint(nav_msgs::Path *path,
+	                                           std::vector<uint8_t> *look_forward,
 	                                           bool go_to_every_target = false) const;
 
 	double getDistanceClosestObstacle(double obstacle_window, double height_diff) const;
@@ -147,7 +148,8 @@ class CollisionAvoidance
 	geometry_msgs::Quaternion slerp(const geometry_msgs::Quaternion &start,
 	                                const geometry_msgs::Quaternion &end, double t) const;
 
-	bool avoidCollision(geometry_msgs::PoseStamped setpoint, bool do_avoidance = true);
+	bool avoidCollision(geometry_msgs::PoseStamped setpoint, bool look_forward,
+	                    bool do_avoidance = true);
 
 	void noInput(geometry_msgs::PoseStamped setpoint) const;
 
